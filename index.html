@@ -568,7 +568,7 @@
     function voteById(id){ return votesCache.find(v=>v.id===id); }
     function userById(id){ return usersCache.find(u=>u.id===id); }
     function userHasRole(role){ return currentUser && currentUser.role===role; }
-    function canSeeAdmin(){ return currentUser && (currentUser.role==='moderator' || currentUser.role==='stemmen_lezer'); } // stemmen_lezer mag reveal-paneel zien
+    function canSeeAdmin(){ return currentUser && (currentUser.role==='moderator' || currentUser.role==='stemmen_lezer'); }
     function uniq(arr){ return Array.from(new Set(arr)); }
 
     // ======================================================================
@@ -598,9 +598,19 @@
     function updateNav(){
       byId('nav-auth').classList.toggle('hidden', !!currentUser);
       byId('nav-user').classList.toggle('hidden', !currentUser);
-      byId('nav-admin').classList.toggle('hidden', !canSeeAdmin());
-      byId('chip-user').textContent = currentUser ? `${currentUser.username} (${currentUser.role})` : '•';
+
+      // 👉 Moderator en stemmen_lezer zien Beheer in nav
+      byId('nav-admin').classList.toggle(
+        'hidden',
+        !(currentUser && (currentUser.role === 'moderator' || currentUser.role === 'stemmen_lezer'))
+      );
+
+      byId('chip-user').textContent = currentUser
+        ? `${currentUser.username} (${currentUser.role})`
+        : '•';
     }
+
+
     function show(sec){
       qsa('.section').forEach(s=>s.classList.remove('active'));
       byId(sec).classList.add('active');
@@ -1172,37 +1182,59 @@
     //  ADMIN
     // ======================================================================
     function renderAdmin(){
-      // tab visible permissions
+      if(!currentUser){
+        byId('ad-wrapper').innerHTML = '<div class="help">Geen toegang (niet ingelogd)</div>';
+        return;
+      }
+
+      // Eerst alle tab-content verbergen
       qsa('.adtab').forEach(x=>x.classList.add('hidden'));
-      byId('ad-users').classList.toggle('hidden', !userHasRole('moderator'));
-      byId('ad-players').classList.toggle('hidden', !userHasRole('moderator'));
-      byId('ad-matches').classList.toggle('hidden', !userHasRole('moderator'));
-      // Stemmingen-tab zichtbaar voor moderator en stemmen_lezer
-      byId('ad-votes').classList.toggle('hidden', !canSeeAdmin());
 
-      // default open the first visible tab
-      const visibleTabs = [
-        {key:'users',el:'ad-users',btnSel:"[data-adtab='users']"},
-        {key:'players',el:'ad-players',btnSel:"[data-adtab='players']"},
-        {key:'matches',el:'ad-matches',btnSel:"[data-adtab='matches']"},
-        {key:'votes',el:'ad-votes',btnSel:"[data-adtab='votes']"}
-      ].filter(x=>!byId(x.el).classList.contains('hidden'));
-      qsa('.adtab').forEach(x=>x.classList.add('hidden'));
-      if(visibleTabs.length>0){ byId(visibleTabs[0].el).classList.remove('hidden'); }
+      if(currentUser.role === 'moderator'){
+        // 👉 Moderator: alle tabs zichtbaar
+        byId('ad-users').classList.remove('hidden');
+        byId('ad-players').classList.remove('hidden');
+        byId('ad-matches').classList.remove('hidden');
+        byId('ad-votes').classList.remove('hidden');
 
-      // tab buttons
-      qsa('[data-adtab]').forEach(btn=>{
-        btn.onclick=()=>{
-          qsa('.adtab').forEach(x=>x.classList.add('hidden'));
-          const target=btn.getAttribute('data-adtab');
-          byId('ad-'+target).classList.remove('hidden');
-        };
-      });
+        // Tab-buttons werken normaal
+        qsa('[data-adtab]').forEach(btn=>{
+          btn.onclick=()=>{
+            qsa('.adtab').forEach(x=>x.classList.add('hidden'));
+            const target=btn.getAttribute('data-adtab');
+            byId('ad-'+target).classList.remove('hidden');
+          };
+        });
 
-      renderAdminUsers();
-      renderAdminPlayers();
-      renderAdminMatches();
-      renderAdminVotes();
+        renderAdminUsers();
+        renderAdminPlayers();
+        renderAdminMatches();
+        renderAdminVotes();
+        return;
+      }
+
+      if(currentUser.role === 'stemmen_lezer'){
+        // 👉 Stemmen-lezer: alleen Stemmingen-tab
+        byId('ad-votes').classList.remove('hidden');
+
+        // Tab-buttons: alleen votes toegestaan
+        qsa('[data-adtab]').forEach(btn=>{
+          if(btn.getAttribute('data-adtab') === 'votes'){
+            btn.onclick=()=>{
+              qsa('.adtab').forEach(x=>x.classList.add('hidden'));
+              byId('ad-votes').classList.remove('hidden');
+            };
+          } else {
+            btn.onclick=()=> alert('Geen toegang tot dit tabblad');
+          }
+        });
+
+        renderAdminVotes();
+        return;
+      }
+
+      // 👉 Alle anderen hebben geen toegang
+      byId('ad-wrapper').innerHTML = '<div class="help">Geen toegang</div>';
     }
 
     // --- USERS
@@ -1744,6 +1776,14 @@
     async function renderAdminVotes(){
       const tb = byId('tbl-votes').querySelector('tbody');
       tb.innerHTML = '';
+
+      // 👉 verberg 'nieuwe stemming' knop voor iedereen behalve moderator
+      const addBtn = byId('btn-add-vote');
+      if(currentUser.role === 'moderator'){
+        addBtn.classList.remove('hidden');
+      } else {
+        addBtn.classList.add('hidden');
+      }
 
       // alle stemmingen ophalen
       const { data: votes, error: vErr } = await supabase

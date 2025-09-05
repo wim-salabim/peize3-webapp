@@ -574,6 +574,27 @@
     // ======================================================================
     //  AUTH & NAV
     // ======================================================================
+    async function hashPassword(password){
+      const enc = new TextEncoder().encode(password);
+      const buf = await crypto.subtle.digest("SHA-256", enc);
+      return Array.from(new Uint8Array(buf))
+                  .map(b => b.toString(16).padStart(2, '0'))
+                  .join('');
+    }
+
+    async function verifyPassword(password, hash){
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password);
+
+      // zelfde algoritme als bij hashPassword
+      const digest = await crypto.subtle.digest('SHA-256', data);
+      const hex = Array.from(new Uint8Array(digest))
+                       .map(b => b.toString(16).padStart(2,'0'))
+                       .join('');
+
+      return hex === hash;
+    }
+
     function updateNav(){
       byId('nav-auth').classList.toggle('hidden', !!currentUser);
       byId('nav-user').classList.toggle('hidden', !currentUser);
@@ -595,40 +616,83 @@
     }));
     byId('btn-logout').addEventListener('click',()=>{ currentUser=null; updateNav(); show('home'); });
 
-    byId('btn-login').addEventListener('click',()=>{
-      const u=byId('login-user').value.trim();
-      const p=byId('login-pass').value;
-      const hit=db.users.find(x=>x.username===u && x.password===p);
-      if(!hit){ alert('Onjuiste inlog'); return; }
-      currentUser = hit;
-      updateNav(); show('home'); renderAll();
+    byId('btn-login').addEventListener('click', async ()=>{
+      const u = byId('login-user').value.trim();
+      const p = byId('login-pass').value;
+
+      if(!u || !p){
+        alert('Gebruikersnaam en wachtwoord verplicht');
+        return;
+      }
+
+      // user ophalen
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('username', u)
+        .maybeSingle();
+
+      if(error){
+        console.error("login error", error);
+        alert("Er ging iets mis bij het inloggen.");
+        return;
+      }
+      if(!user){
+        alert('Onjuiste inlog');
+        return;
+      }
+
+      // wachtwoord verifiëren (p vs. user.password_hash)
+      const ok = await verifyPassword(p, user.password_hash);
+      if(!ok){
+        alert('Onjuiste inlog');
+        return;
+      }
+
+      // login succesvol
+      currentUser = user;
+      updateNav();
+      show('home');
+      renderAll();
     });
+
 
     // ======================================================================
     //  HOME KPIs
     // ======================================================================
-    function renderKPIs(){
+    async function renderKPIs(){
+      // matches en spelers laden
+      const matches = await loadMatches();
+      const players = await loadPlayers();
+      const userVotes = await supabase.from('user_votes').select('*');
+      const uvData = userVotes.error ? [] : userVotes.data;
+
+      // cache voor playerById
+      const playersCache = players;
+      function playerById(id){
+        return playersCache.find(p => p.id === id);
+      }
+
       // Winst, gelijk, verlies tellen
-       let wins=0, draws=0, losses=0;
-       db.matches.forEach(m=>{
-        if(m.gfor!=null && m.gagn!=null){ // alleen gespeelde wedstrijden
+      let wins=0, draws=0, losses=0;
+      matches.forEach(m=>{
+        if(m.gfor!=null && m.gagn!=null){
           if(m.gfor > m.gagn) wins++;
           else if(m.gfor === m.gagn) draws++;
           else losses++;
         }
       });
-
       const points = wins*3 + draws;
 
-      byId('home-wins').textContent = wins;
-      byId('home-draws').textContent = draws;
+      byId('home-wins').textContent   = wins;
+      byId('home-draws').textContent  = draws;
       byId('home-losses').textContent = losses;
       byId('home-points').textContent = points;
 
       // Doelpunten & assists tellen
       const goals={}, assists={};
-      db.players.forEach(p=>{ goals[p.id]=0; assists[p.id]=0; });
-      db.matches.forEach(m=>{
+      players.forEach(p=>{ goals[p.id]=0; assists[p.id]=0; });
+      matches.forEach(m=>{
         (m.goals||[]).forEach(g=>{
           if(g.scorer) goals[g.scorer]++;
           if(g.assist) assists[g.assist]++;
@@ -650,39 +714,41 @@
         const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
         return `<li>${name}: ${c}</li>`;
       }).join('');
-        // King, Kut en Bonanza stemmen tellen
-        const king={}, kut={}, bonanza={};
-        db.players.forEach(p=>{ king[p.id]=0; kut[p.id]=0; bonanza[p.id]=0; });
-        db.userVotes.forEach(uv=>{
-          if(uv.king) king[uv.king]++;
-          if(uv.kut) kut[uv.kut]++;
-          if(uv.bonanza) bonanza[uv.bonanza]++;
-        });
 
-        // Top 3 King
-        const topKing = Object.entries(king)
-          .sort((a,b)=>b[1]-a[1]).slice(0,3);
-        byId('kpi-king').innerHTML = topKing.map(([pid,c])=>{
-          const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
-          return `<li>${name}: ${c}</li>`;
-        }).join('');
+      // King, Kut en Bonanza stemmen tellen
+      const king={}, kut={}, bonanza={};
+      players.forEach(p=>{ king[p.id]=0; kut[p.id]=0; bonanza[p.id]=0; });
+      uvData.forEach(uv=>{
+        if(uv.king) king[uv.king]++;
+        if(uv.kut) kut[uv.kut]++;
+        if(uv.bonanza) bonanza[uv.bonanza]++;
+      });
 
-        // Top 3 Kut
-        const topKut = Object.entries(kut)
-          .sort((a,b)=>b[1]-a[1]).slice(0,3);
-        byId('kpi-kut').innerHTML = topKut.map(([pid,c])=>{
-          const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
-          return `<li>${name}: ${c}</li>`;
-        }).join('');
+      // Top 3 King
+      const topKing = Object.entries(king)
+        .sort((a,b)=>b[1]-a[1]).slice(0,3);
+      byId('kpi-king').innerHTML = topKing.map(([pid,c])=>{
+        const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
+        return `<li>${name}: ${c}</li>`;
+      }).join('');
 
-        // Top 3 Bonanza
-        const topBonanza = Object.entries(bonanza)
-          .sort((a,b)=>b[1]-a[1]).slice(0,3);
-        byId('kpi-bonanza').innerHTML = topBonanza.map(([pid,c])=>{
-          const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
-          return `<li>${name}: ${c}</li>`;
-        }).join('');
+      // Top 3 Kut
+      const topKut = Object.entries(kut)
+        .sort((a,b)=>b[1]-a[1]).slice(0,3);
+      byId('kpi-kut').innerHTML = topKut.map(([pid,c])=>{
+        const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
+        return `<li>${name}: ${c}</li>`;
+      }).join('');
+
+      // Top 3 Bonanza
+      const topBonanza = Object.entries(bonanza)
+        .sort((a,b)=>b[1]-a[1]).slice(0,3);
+      byId('kpi-bonanza').innerHTML = topBonanza.map(([pid,c])=>{
+        const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
+        return `<li>${name}: ${c}</li>`;
+      }).join('');
     }
+
 
     // ======================================================================
     //  MATCHES VIEW (Programma/Uitslagen)  -- Programma blijft bestaan
@@ -690,14 +756,34 @@
     byId('tab-programma').addEventListener('click',()=>{ byId('programma-list').classList.remove('hidden'); byId('uitslagen-list').classList.add('hidden'); });
     byId('tab-uitslagen').addEventListener('click',()=>{ byId('programma-list').classList.add('hidden'); byId('uitslagen-list').classList.remove('hidden'); });
 
-    function renderMatches(){
-      const pl = byId('programma-list'); pl.innerHTML='';
-      const ul = byId('uitslagen-list'); ul.innerHTML='';
-      const upcoming = db.matches.filter(isUpcoming).sort((a,b)=>new Date(a.date)-new Date(b.date));
-      const results = db.matches.filter(m=>m.gfor!=null && m.gagn!=null).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    async function renderMatches(){
+      const pl = byId('programma-list');
+      pl.innerHTML = '';
+      const ul = byId('uitslagen-list');
+      ul.innerHTML = '';
 
+      // Matches en spelers ophalen
+      const matches = await loadMatches();
+      const players = await loadPlayers();
+
+      // cache voor playerById
+      function playerById(id){
+        return players.find(p => p.id === id);
+      }
+
+      // splitsen in programma en uitslagen
+      const upcoming = matches
+        .filter(isUpcoming)
+        .sort((a,b)=>new Date(a.date) - new Date(b.date));
+
+      const results = matches
+        .filter(m => m.gfor != null && m.gagn != null)
+        .sort((a,b)=>new Date(b.date) - new Date(a.date));
+
+      // Programma tonen
       upcoming.forEach(m=>{
-        const div=document.createElement('div'); div.className='card';
+        const div = document.createElement('div');
+        div.className = 'card';
         div.innerHTML = `
           <div class="row">
             <div class="col">
@@ -712,17 +798,23 @@
         pl.appendChild(div);
       });
 
+      // Uitslagen tonen
       results.forEach(m=>{
-        const div=document.createElement('div'); div.className='card';
-        const presentNames = (m.present||[]).map(pid=>playerById(pid)?.name).filter(Boolean).join(', ') || '—';
+        const div = document.createElement('div');
+        div.className = 'card';
+        const presentNames = (m.present||[])
+          .map(pid => playerById(pid)?.name)
+          .filter(Boolean).join(', ') || '—';
 
-        // >>> NIEUW: doelpunten renderen
+        // Doelpunten renderen
         let goalsHtml = '';
         if(m.goals && m.goals.length > 0){
           goalsHtml = '<ul class="help">';
-          m.goals.forEach((g,idx)=>{
+          m.goals.forEach(g=>{
             const scorer = playerById(g.scorer)?.name || '—';
-            const assist = g.type==='veld' && g.assist ? (' (assist: '+(playerById(g.assist)?.name||'—')+')') : '';
+            const assist = g.type==='veld' && g.assist
+              ? (' (assist: '+(playerById(g.assist)?.name||'—')+')')
+              : '';
             const type = g.type==='penalty' ? 'Penalty' : 'Veldgoal';
             goalsHtml += `<li>${type}: ${escapeHtml(scorer)}${assist}</li>`;
           });
@@ -736,7 +828,7 @@
               <div class="subtle">${m.location||''}</div>
               <div class="pill">Uitslag: <b>${matchResultText(m)}</b></div>
               <div class="help">Aanwezigen: ${presentNames}</div>
-              ${goalsHtml} <!-- >>> hier tonen -->
+              ${goalsHtml}
             </div>
             <div class="col" style="max-width:220px">
               <div>${m.report?escapeHtml(m.report):''}</div>
@@ -744,34 +836,42 @@
           </div>`;
         ul.appendChild(div);
       });
-
     }
+
 
     // ======================================================================
     //  STATS (gespeelde wedstrijden per speler)  -- kaarten verwijderd
     // ======================================================================
-    function renderKlassement(){
+    async function renderKlassement(){
       const tb = byId('tbl-klassement').querySelector('tbody');
       tb.innerHTML = '';
 
+      // spelers en stemmen ophalen
+      const players = await loadPlayers();
+      const { data: votesData, error } = await supabase.from('user_votes').select('*');
+      if(error){ console.error("renderKlassement load user_votes", error); return; }
+
       // tellers
       const king = {}, kut = {}, bonanza = {};
-      db.players.forEach(p=>{
+      players.forEach(p=>{
         king[p.id]=0; kut[p.id]=0; bonanza[p.id]=0;
       });
 
       // doorloop alle userVotes
-      db.userVotes.forEach(uv=>{
+      votesData.forEach(uv=>{
         if(uv.king) king[uv.king]++;
         if(uv.kut) kut[uv.kut]++;
         if(uv.bonanza) bonanza[uv.bonanza]++;
       });
 
       // render tabel
-      db.players.forEach(p=>{
-        const k=king[p.id]||0, ku=kut[p.id]||0, b=bonanza[p.id]||0;
-        const tr=document.createElement('tr');
-        tr.innerHTML=`
+      players.forEach(p=>{
+        const k = king[p.id] || 0;
+        const ku = kut[p.id] || 0;
+        const b = bonanza[p.id] || 0;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
           <td>${escapeHtml(p.name)}</td>
           <td>${k}</td>
           <td>${ku}</td>
@@ -783,27 +883,36 @@
       makeTableSortable('tbl-klassement');
     }
 
-    function renderStats(){
+
+    async function renderStats(){
       const tb = byId('tbl-stats').querySelector('tbody');
       tb.innerHTML = '';
 
+      // spelers en wedstrijden ophalen
+      const players = await loadPlayers();
+      const matches = await loadMatches();
+
       // Gespeelde wedstrijden tellen
-      const counts = Object.fromEntries(db.players.map(p=>[p.id,0]));
-      db.matches.forEach(m=> (m.present||[]).forEach(pid=>counts[pid]=(counts[pid]||0)+1) );
+      const counts = Object.fromEntries(players.map(p => [p.id, 0]));
+      matches.forEach(m =>
+        (m.present || []).forEach(pid => {
+          counts[pid] = (counts[pid] || 0) + 1;
+        })
+      );
 
       // Doelpunten & Assists tellen
       const goalsFor = {}, assistsFor = {};
-      db.players.forEach(p=>{ goalsFor[p.id]=0; assistsFor[p.id]=0; });
-      db.matches.forEach(m=>{
-        (m.goals||[]).forEach(g=>{
+      players.forEach(p => { goalsFor[p.id] = 0; assistsFor[p.id] = 0; });
+      matches.forEach(m=>{
+        (m.goals || []).forEach(g=>{
           if(g.scorer) goalsFor[g.scorer]++;
           if(g.assist) assistsFor[g.assist]++;
         });
       });
 
       // Spelersrijen renderen
-      db.players.forEach(p=>{
-        const tr=document.createElement('tr');
+      players.forEach(p=>{
+        const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escapeHtml(p.name)}</td>
           <td>${escapeHtml(p.position||'')}</td>
@@ -817,6 +926,7 @@
       // Sorteerfunctie activeren
       makeTableSortable('tbl-stats');
     }
+
     function makeTableSortable(tableId){
       const table = byId(tableId);
       const headers = table.querySelectorAll('th');
@@ -849,19 +959,51 @@
     //  - Resultaten geheim tot vrijgave
     //  - reveal flow hieronder in Admin -> Stemmingen
     // ======================================================================
-    function renderVoting(){
-      const activeBox=byId('vote-active-list'); activeBox.innerHTML='';
-      const relBox=byId('vote-released-list'); relBox.innerHTML='';
+    async function renderVoting(){
+      const activeBox = byId('vote-active-list');
+      activeBox.innerHTML = '';
+      const relBox = byId('vote-released-list');
+      relBox.innerHTML = '';
 
       const myId = currentUser?.id;
-      const activeVotes = db.votes.filter(v=>v.status==='active' || v.status==='closed' || v.status==='revealing'); // zichtbaar maar resultaten geheim
-      const releasedVotes = db.votes.filter(v=>v.status==='released');
 
-      activeVotes.forEach(v=>{
-        const card=document.createElement('div'); card.className='card';
+      // stemmen en wedstrijden ophalen
+      const { data: votes, error: vErr } = await supabase.from('votes').select('*');
+      if(vErr){ console.error("renderVoting load votes", vErr); return; }
+
+      const matches = await loadMatches();
+      const players = await loadPlayers();
+
+      // helper om match bij id te zoeken
+      function matchById(id){
+        return matches.find(m => m.id === id);
+      }
+
+      // mijn stemmen ophalen
+      let myVotes = [];
+      if(myId){
+        const { data: uvData, error: uvErr } = await supabase
+          .from('user_votes')
+          .select('*')
+          .eq('user_id', myId);
+        if(uvErr){ console.error("renderVoting load user_votes", uvErr); }
+        else { myVotes = uvData; }
+      }
+
+      // actieve en vrijgegeven stemmen splitsen
+      const activeVotes   = votes.filter(v => v.status==='active' || v.status==='closed' || v.status==='revealing');
+      const releasedVotes = votes.filter(v => v.status==='released');
+
+      // actieve stemmen renderen
+      for(const v of activeVotes){
+        const card = document.createElement('div');
+        card.className = 'card';
         const m = matchById(v.matchId);
-        const mySubmission = db.userVotes.find(u=>u.voteId===v.id && u.userId===myId);
-        let statusIcon = v.status==='active'?'st-active':(v.status==='closed'?'st-closed':(v.status==='revealing'?'st-revealing':'st-released'));
+        const mySubmission = myVotes.find(u => u.vote_id === v.id);
+        let statusIcon = v.status==='active'
+          ? 'st-active'
+          : (v.status==='closed' ? 'st-closed' : (v.status==='revealing' ? 'st-revealing' : 'st-released'));
+
         card.innerHTML = `
           <div class="row">
             <div class="col">
@@ -872,24 +1014,36 @@
           <div class="divider"></div>
         `;
 
-        const body=document.createElement('div');
+        const body = document.createElement('div');
         if(v.status==='active'){
-          if(!currentUser){ body.innerHTML='<div class="help">Log in om te stemmen.</div>'; }
-          else if(mySubmission){ body.innerHTML='<div class="pill">Je hebt al gestemd. Resultaten blijven verborgen tot vrijgave.</div>'; }
-          else{
+          if(!currentUser){
+            body.innerHTML = '<div class="help">Log in om te stemmen.</div>';
+          } else if(mySubmission){
+            body.innerHTML = '<div class="pill">Je hebt al gestemd. Resultaten blijven verborgen tot vrijgave.</div>';
+          } else {
             body.appendChild(renderVoteForm(v));
           }
         } else {
-          body.innerHTML='<div class="help">Stemming is niet actief. Resultaten blijven verborgen tot vrijgave.</div>';
+          body.innerHTML = '<div class="help">Stemming is niet actief. Resultaten blijven verborgen tot vrijgave.</div>';
         }
         card.appendChild(body);
         activeBox.appendChild(card);
-      });
+      }
 
-      releasedVotes.forEach(v=>{
-        const card=document.createElement('div'); card.className='card';
+      // vrijgegeven stemmen renderen
+      for(const v of releasedVotes){
+        const card = document.createElement('div');
+        card.className = 'card';
         const m = matchById(v.matchId);
-        const agg = aggregateVote(v.id);
+
+        // alle stemmen voor deze stemming ophalen
+        const { data: uvAgg, error: uvAggErr } = await supabase
+          .from('user_votes')
+          .select('*')
+          .eq('vote_id', v.id);
+        if(uvAggErr){ console.error("renderVoting agg", uvAggErr); continue; }
+
+        const agg = aggregateVote(players, uvAgg);
         card.innerHTML = `
           <h3><span class="status-dot st-released"></span>${escapeHtml(v.title)}</h3>
           <div class="subtle">Wedstrijd: ${m?escapeHtml(m.opponent):'—'} | Status: <b>${v.status}</b></div>
@@ -897,45 +1051,102 @@
           ${renderAggHtml(agg)}
         `;
         relBox.appendChild(card);
-      });
+      }
     }
 
-    function renderVoteForm(v){
-      const box=document.createElement('div'); box.className='vote-box';
-      const opts = db.players.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+
+    async function renderVoteForm(v){
+      const box = document.createElement('div');
+      box.className = 'vote-box';
+
+      // spelers laden
+      const players = await loadPlayers();
+      const opts = players.map(p =>
+        `<option value="${p.id}">${escapeHtml(p.name)}</option>`
+      ).join('');
+
+      // formulier HTML
       box.innerHTML = `
-        <div class="vote-row"><label style="min-width:160px">King</label><select class="vote-king"><option value="">—</option>${opts}</select></div>
-        <label>Opmerking bij King</label><textarea class="vote-comment-king" rows="2" placeholder="optioneel"></textarea>
-        <div class="vote-row"><label style="min-width:160px">Kut</label><select class="vote-kut"><option value="">—</option>${opts}</select></div>
-        <label>Opmerking bij Kut</label><textarea class="vote-comment-kut" rows="2" placeholder="optioneel"></textarea>
-        <div class="vote-row"><label style="min-width:160px">Bonanza</label><select class="vote-bonanza"><option value="">—</option>${opts}</select></div>
-        <label>Opmerking bij Bonanza</label><textarea class="vote-comment-bonanza" rows="2" placeholder="optioneel"></textarea>
+        <div class="vote-row"><label style="min-width:160px">King</label>
+          <select class="vote-king"><option value="">—</option>${opts}</select>
+        </div>
+        <label>Opmerking bij King</label>
+        <textarea class="vote-comment-king" rows="2" placeholder="optioneel"></textarea>
+
+        <div class="vote-row"><label style="min-width:160px">Kut</label>
+          <select class="vote-kut"><option value="">—</option>${opts}</select>
+        </div>
+        <label>Opmerking bij Kut</label>
+        <textarea class="vote-comment-kut" rows="2" placeholder="optioneel"></textarea>
+
+        <div class="vote-row"><label style="min-width:160px">Bonanza</label>
+          <select class="vote-bonanza"><option value="">—</option>${opts}</select>
+        </div>
+        <label>Opmerking bij Bonanza</label>
+        <textarea class="vote-comment-bonanza" rows="2" placeholder="optioneel"></textarea>
+
         <div class="sticky-actions"><button class="btn primary">Versturen</button></div>
       `;
-      box.querySelector('button').addEventListener('click',()=>{
-        if(!currentUser){ alert('Log in om te stemmen.'); return; }
-        const king=ensureInt(box.querySelector('.vote-king').value);
-        const kut=ensureInt(box.querySelector('.vote-kut').value);
-        const bon=ensureInt(box.querySelector('.vote-bonanza').value);
+
+      // event handler
+      box.querySelector('button').addEventListener('click', async ()=>{
+        if(!currentUser){
+          alert('Log in om te stemmen.');
+          return;
+        }
+
+        const king  = ensureInt(box.querySelector('.vote-king').value);
+        const kut   = ensureInt(box.querySelector('.vote-kut').value);
+        const bon   = ensureInt(box.querySelector('.vote-bonanza').value);
         const cKing = box.querySelector('.vote-comment-king').value.trim();
         const cKut  = box.querySelector('.vote-comment-kut').value.trim();
         const cBon  = box.querySelector('.vote-comment-bonanza').value.trim();
-        db.userVotes.push({voteId:v.id,userId:currentUser.id, king, kut, bonanza:bon,cKing, cKut, cBon,  createdAt:nowIso()})
-        save(); renderVoting(); renderAdminVotes();
+
+        const newVote = {
+          vote_id: v.id,
+          user_id: currentUser.id,
+          king, kut, bonanza: bon,
+          cking: cKing,
+          ckut: cKut,
+          cbon: cBon,
+          created_at: nowIso()
+        };
+
+        const { error } = await supabase.from('user_votes').insert(newVote);
+        if(error){
+          console.error("Vote insert error", error);
+          alert("Er ging iets mis bij het opslaan van je stem.");
+          return;
+        }
+
+        // opnieuw renderen
+        renderVoting();
+        renderAdminVotes();
       });
+
       return box;
     }
 
-    function aggregateVote(voteId){
-      const rows = db.userVotes.filter(u=>u.voteId===voteId);
-      const tally = {king:{}, kut:{}, bonanza:{}};
-      rows.forEach(r=>{
-        if(r.king) tally.king[r.king]=(tally.king[r.king]||0)+1;
-        if(r.kut) tally.kut[r.kut]=(tally.kut[r.kut]||0)+1;
-        if(r.bonanza) tally.bonanza[r.bonanza]=(tally.bonanza[r.bonanza]||0)+1;
+
+    async function aggregateVote(voteId){
+      const players = await loadPlayers();
+      const { data: userVotes, error } = await supabase
+        .from('user_votes')
+        .select('*')
+        .eq('vote_id', voteId);
+
+      if(error){ console.error("aggregateVote error", error); return { king:{}, kut:{}, bonanza:{} }; }
+
+      const king={}, kut={}, bonanza={};
+      players.forEach(p=>{ king[p.id]=0; kut[p.id]=0; bonanza[p.id]=0; });
+      userVotes.forEach(uv=>{
+        if(uv.king) king[uv.king]++;
+        if(uv.kut) kut[uv.kut]++;
+        if(uv.bonanza) bonanza[uv.bonanza]++;
       });
-      return tally;
+      return { king, kut, bonanza };
     }
+
     function renderAggHtml(agg){
       const mk = (obj,title)=>{
         const arr = Object.entries(obj).sort((a,b)=>b[1]-a[1]);
@@ -995,22 +1206,67 @@
     }
 
     // --- USERS
-    byId('btn-add-user').addEventListener('click',()=>{
-      const name=byId('new-usr-name').value.trim();
-      const pass=byId('new-usr-pass').value;
-      const role=byId('new-usr-role').value;
-      if(!name || !pass) return alert('Naam en wachtwoord verplicht');
-      if(db.users.some(u=>u.username===name)) return alert('Gebruikersnaam bestaat al');
-      const id=++db.seq.user;
-      db.users.push({id,username:name,password:pass,role});
-      save(); renderAdminUsers();
-      byId('new-usr-name').value=''; byId('new-usr-pass').value=''; byId('new-usr-role').value='user';
+    byId('btn-add-user').addEventListener('click', async ()=>{
+      const name = byId('new-usr-name').value.trim();
+      const pass = byId('new-usr-pass').value;
+      const role = byId('new-usr-role').value;
+
+      if(!name || !pass){
+        alert('Naam en wachtwoord verplicht');
+        return;
+      }
+
+      // check of de usernaam al bestaat
+      const { data: existing, error: checkErr } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', name)
+        .maybeSingle();
+
+      if(checkErr){
+        console.error("check user error", checkErr);
+        alert("Er ging iets mis bij het controleren van de gebruikersnaam.");
+        return;
+      }
+
+      if(existing){
+        alert('Gebruikersnaam bestaat al');
+        return;
+      }
+
+      // wachtwoord hashen
+      const hashed = await hashPassword(pass);
+
+      // nieuwe user opslaan
+      const { error: insErr } = await supabase.from('users').insert({
+        username: name,
+        password_hash: hashed,
+        role: role
+      });
+
+      if(insErr){
+        console.error("insert user error", insErr);
+        alert("Er ging iets mis bij het toevoegen van de gebruiker.");
+        return;
+      }
+
+      // UI verversen
+      await renderAdminUsers();
+
+      // formulier resetten
+      byId('new-usr-name').value = '';
+      byId('new-usr-pass').value = '';
+      byId('new-usr-role').value = 'user';
     });
-    function renderAdminUsers(){
-      const tb=byId('tbl-users').querySelector('tbody'); tb.innerHTML='';
-      db.users.forEach(u=>{
-        const tr=document.createElement('tr');
-        tr.innerHTML=`
+    async function renderAdminUsers(){
+      const tb = byId('tbl-users').querySelector('tbody');
+      tb.innerHTML = '';
+
+      const users = await loadUsers(); // uit Supabase
+
+      users.forEach(u=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
           <td>${escapeHtml(u.username)}</td>
           <td>
             ${currentUser?.role==='moderator'
@@ -1021,72 +1277,205 @@
                  </select>`
               : `<span class="pill">${u.role}</span>`}
           </td>
-          <td>${currentUser?.role==='moderator' ? `<button class="btn" data-act="reset" data-id="${u.id}">Wachtw. reset</button>`:''}</td>
+          <td>${currentUser?.role==='moderator'
+            ? `<button class="btn" data-act="reset" data-id="${u.id}">Wachtw. reset</button>`
+            : ''}</td>
         `;
         tb.appendChild(tr);
       });
-      qsa('.role-sel',tb).forEach(sel=> sel.addEventListener('change', e=>{
-        const id=+e.target.getAttribute('data-uid');
-        const u=userById(id); if(!u) return;
-        u.role=e.target.value; save(); updateNav(); renderAdmin(); // update visibility
-      }));
-      qsa('button[data-act="reset"]',tb).forEach(btn=>btn.addEventListener('click',()=>{
-        const id=+btn.getAttribute('data-id'); const u=userById(id); if(!u) return;
-        const np=prompt('Nieuw wachtwoord voor '+u.username, 'changeme');
-        if(np){ u.password=np; save(); alert('Wachtwoord aangepast'); }
-      }));
+
+      // rol wijzigen
+      qsa('.role-sel',tb).forEach(sel =>
+        sel.addEventListener('change', async e=>{
+          const id = +e.target.getAttribute('data-uid');
+          const newRole = e.target.value;
+
+          const { error } = await supabase
+            .from('users')
+            .update({ role: newRole })
+            .eq('id', id);
+
+          if(error){
+            console.error("update role error", error);
+            alert("Kon rol niet aanpassen");
+          } else {
+            updateNav();
+            renderAdmin();
+          }
+        })
+      );
+
+      // wachtwoord reset
+      qsa('button[data-act="reset"]',tb).forEach(btn=>
+        btn.addEventListener('click', async ()=>{
+          const id = +btn.getAttribute('data-id');
+          const u = users.find(x => x.id === id);
+          if(!u) return;
+
+          const np = prompt('Nieuw wachtwoord voor '+u.username, 'changeme');
+          if(np){
+            const hashed = await hashPassword(np);
+            const { error } = await supabase
+              .from('users')
+              .update({ password_hash: hashed })
+              .eq('id', id);
+
+            if(error){
+              console.error("reset password error", error);
+              alert("Kon wachtwoord niet aanpassen");
+            } else {
+              alert('Wachtwoord aangepast');
+            }
+          }
+        })
+      );
     }
 
+
     // --- PLAYERS
-    byId('btn-save-player').addEventListener('click',()=>{
-      const name=byId('pl-name').value.trim(); const pos=byId('pl-pos').value.trim();
+    // speler opslaan
+    byId('btn-save-player').addEventListener('click', async ()=>{
+      const name = byId('pl-name').value.trim();
+      const pos  = byId('pl-pos').value.trim();
       if(!name) return alert('Naam verplicht');
+
       if(editingPlayerId){
-        const p = playerById(editingPlayerId); if(!p) return;
-        p.name=name; p.position=pos;
-        editingPlayerId=null;
+        // speler bewerken
+        const { error } = await supabase
+          .from('players')
+          .update({ name, position: pos })
+          .eq('id', editingPlayerId);
+
+        if(error){
+          console.error("update player error", error);
+          alert("Kon speler niet opslaan.");
+          return;
+        }
+        editingPlayerId = null;
       } else {
-        const id=++db.seq.player; db.players.push({id,name,position:pos});
+        // nieuwe speler toevoegen
+        const { error } = await supabase
+          .from('players')
+          .insert({ name, position: pos });
+
+        if(error){
+          console.error("insert player error", error);
+          alert("Kon speler niet toevoegen.");
+          return;
+        }
       }
-      save(); byId('pl-name').value=''; byId('pl-pos').value=''; renderAdminPlayers(); renderMatches(); renderStats(); renderVoting(); renderKlassement();
+
+      // formulier reset
+      byId('pl-name').value = '';
+      byId('pl-pos').value = '';
+
+      // UI verversen
+      renderAdminPlayers();
+      renderMatches();
+      renderStats();
+      renderVoting();
+      renderKlassement();
     });
-    byId('btn-cancel-player').addEventListener('click',()=>{ editingPlayerId=null; byId('pl-name').value=''; byId('pl-pos').value=''; });
-    function renderAdminPlayers(){
+
+    // annuleren
+    byId('btn-cancel-player').addEventListener('click', ()=>{
+      editingPlayerId = null;
+      byId('pl-name').value = '';
+      byId('pl-pos').value = '';
+    });
+
+    // spelerslijst renderen
+    async function renderAdminPlayers(){
       // presence checkboxes template
       renderPresenceCheckboxes();
-      const tb=byId('tbl-players').querySelector('tbody'); tb.innerHTML='';
-      db.players.forEach(p=>{
-        const tr=document.createElement('tr');
-        tr.innerHTML=`<td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.position||'')}</td>
+
+      const tb = byId('tbl-players').querySelector('tbody');
+      tb.innerHTML = '';
+
+      const players = await loadPlayers();
+
+      players.forEach(p=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(p.name)}</td>
+          <td>${escapeHtml(p.position||'')}</td>
           <td>
             <button class="btn" data-ed="${p.id}">Bewerken</button>
             <button class="btn danger" data-del="${p.id}">Verwijderen</button>
           </td>`;
         tb.appendChild(tr);
       });
-      qsa('button[data-ed]',tb).forEach(b=>b.addEventListener('click',()=>{
-        const id=+b.getAttribute('data-ed'); const p=playerById(id); if(!p) return;
-        editingPlayerId=id; byId('pl-name').value=p.name; byId('pl-pos').value=p.position||'';
-      }));
-      qsa('button[data-del]',tb).forEach(b=>b.addEventListener('click',()=>{
-        const id=+b.getAttribute('data-del');
-        if(!confirm('Deze speler verwijderen?')) return;
-        db.players = db.players.filter(p=>p.id!==id);
-        // verwijder ook uit aanwezigheden
-        db.matches.forEach(m=> m.present = (m.present||[]).filter(pid=>pid!==id) );
-        save(); renderAdminPlayers(); renderMatches(); renderStats(); renderVoting(); renderKlassement();
-      }));
+
+      // speler bewerken
+      qsa('button[data-ed]',tb).forEach(b =>
+        b.addEventListener('click', ()=>{
+          const id = +b.getAttribute('data-ed');
+          const p = players.find(pl => pl.id === id);
+          if(!p) return;
+          editingPlayerId = id;
+          byId('pl-name').value = p.name;
+          byId('pl-pos').value = p.position || '';
+        })
+      );
+
+      // speler verwijderen
+      qsa('button[data-del]',tb).forEach(b =>
+        b.addEventListener('click', async ()=>{
+          const id = +b.getAttribute('data-del');
+          if(!confirm('Deze speler verwijderen?')) return;
+
+          // speler verwijderen
+          const { error: delErr } = await supabase
+            .from('players')
+            .delete()
+            .eq('id', id);
+
+          if(delErr){
+            console.error("delete player error", delErr);
+            alert("Kon speler niet verwijderen.");
+            return;
+          }
+
+          // speler ook verwijderen uit matches.present
+          const matches = await loadMatches();
+          for(const m of matches){
+            if(m.present && m.present.includes(id)){
+              const newPresent = m.present.filter(pid => pid !== id);
+              await supabase
+                .from('matches')
+                .update({ present: newPresent })
+                .eq('id', m.id);
+            }
+          }
+
+          // UI verversen
+          renderAdminPlayers();
+          renderMatches();
+          renderStats();
+          renderVoting();
+          renderKlassement();
+        })
+      );
     }
 
     // --- MATCHES
     let currentGoals = [];
 
-    function renderGoalsForm(goals=[]){
+    // Doelpuntenformulier
+    async function renderGoalsForm(goals = []){
       const box = byId('goals-box');
       box.innerHTML = '';
+
+      const players = await loadPlayers();
+
       goals.forEach((g, idx) => {
-        const opts = db.players.map(p=>`<option value="${p.id}" ${p.id===g.scorer?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
-        const optsAssist = db.players.map(p=>`<option value="${p.id}" ${p.id===g.assist?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
+        const opts = players.map(p =>
+          `<option value="${p.id}" ${p.id===g.scorer?'selected':''}>${escapeHtml(p.name)}</option>`
+        ).join('');
+        const optsAssist = players.map(p =>
+          `<option value="${p.id}" ${p.id===g.assist?'selected':''}>${escapeHtml(p.name)}</option>`
+        ).join('');
+
         box.innerHTML += `
           <div class="card">
             <label>Type</label>
@@ -1107,10 +1496,15 @@
         `;
       });
     }
-    function renderPresenceCheckboxes(selected = []) {
+
+    // Aanwezigheden formulier
+    async function renderPresenceCheckboxes(selected = []){
       const box = byId('presence-box');
       box.innerHTML = '';
-      db.players.forEach(p => {
+
+      const players = await loadPlayers();
+
+      players.forEach(p => {
         const div = document.createElement('div');
         div.className = 'player';
         div.innerHTML = `
@@ -1129,29 +1523,82 @@
       currentGoals.push({type:'veld', scorer:null, assist:null});
       renderGoalsForm(currentGoals);
     });
-    byId('btn-save-match').addEventListener('click',()=>{
-      const op=byId('mt-opponent').value.trim();
-      const dt=byId('mt-date').value;
-      const loc=byId('mt-location').value.trim();
-      const gfor=byId('mt-gfor').value===''?null:ensureInt(byId('mt-gfor').value);
-      const gagn=byId('mt-gagn').value===''?null:ensureInt(byId('mt-gagn').value);
-      const rep=byId('mt-report').value.trim();
+    byId('btn-save-match').addEventListener('click', async ()=>{
+      const op  = byId('mt-opponent').value.trim();
+      const dt  = byId('mt-date').value;
+      const loc = byId('mt-location').value.trim();
+      const gfor = byId('mt-gfor').value==='' ? null : ensureInt(byId('mt-gfor').value);
+      const gagn = byId('mt-gagn').value==='' ? null : ensureInt(byId('mt-gagn').value);
+      const rep  = byId('mt-report').value.trim();
       const present = qsa('#presence-box input[type="checkbox"]:checked').map(cb=>+cb.value);
-      const goals = collectGoalsForm();
-      if(!op || !dt) return alert('Tegenstander en datum zijn verplicht');
-      if(editingMatchId){
-        const m = matchById(editingMatchId); if(!m) return;
-        Object.assign(m,{opponent:op,date:dt,location:loc,gfor,gagn,report:rep,present,goals});
-        editingMatchId=null;
-      } else {
-        const id=++db.seq.match; db.matches.push({id,opponent:op,date:dt,location:loc,gfor,gagn,report:rep,present,goals});
+      const goals   = collectGoalsForm();
+
+      if(!op || !dt){
+        alert('Tegenstander en datum zijn verplicht');
+        return;
       }
-      save();
-      // reset form
-      byId('edit-match-id').value=''; byId('mt-opponent').value=''; byId('mt-date').value=''; byId('mt-location').value='';
-      byId('mt-gfor').value=''; byId('mt-gagn').value=''; byId('mt-report').value=''; renderPresenceCheckboxes([]);
-      renderAdminMatches(); renderMatches(); renderStats();
+
+      if(editingMatchId){
+        // bestaande wedstrijd updaten
+        const { error } = await supabase
+          .from('matches')
+          .update({
+            opponent: op,
+            date: dt,
+            location: loc,
+            gfor,
+            gagn,
+            report: rep,
+            present,
+            goals
+          })
+          .eq('id', editingMatchId);
+
+        if(error){
+          console.error("update match error", error);
+          alert("Kon wedstrijd niet opslaan.");
+          return;
+        }
+
+        editingMatchId = null;
+      } else {
+        // nieuwe wedstrijd toevoegen
+        const { error } = await supabase
+          .from('matches')
+          .insert({
+            opponent: op,
+            date: dt,
+            location: loc,
+            gfor,
+            gagn,
+            report: rep,
+            present,
+            goals
+          });
+
+        if(error){
+          console.error("insert match error", error);
+          alert("Kon wedstrijd niet toevoegen.");
+          return;
+        }
+      }
+
+      // reset formulier
+      byId('edit-match-id').value = '';
+      byId('mt-opponent').value   = '';
+      byId('mt-date').value       = '';
+      byId('mt-location').value   = '';
+      byId('mt-gfor').value       = '';
+      byId('mt-gagn').value       = '';
+      byId('mt-report').value     = '';
+      renderPresenceCheckboxes([]);
+
+      // UI verversen
+      renderAdminMatches();
+      renderMatches();
+      renderStats();
     });
+
     byId('btn-cancel-match').addEventListener('click',()=>{
       editingMatchId=null;
       byId('edit-match-id').value=''; byId('mt-opponent').value=''; byId('mt-date').value=''; byId('mt-location').value='';
@@ -1166,128 +1613,315 @@
         return {type, scorer, assist};
       });
     }
-    function renderAdminMatches(){
+    async function renderAdminMatches(){
+      // wedstrijden ophalen
+      const matches = await loadMatches();
+
       // fill match options for votes tab
-      const sel=byId('vt-match'); sel.innerHTML = db.matches.map(m=>`<option value="${m.id}">${fmtDate(m.date)} vs ${escapeHtml(m.opponent)}</option>`).join('');
-      // list
-      const tb=byId('tbl-matches').querySelector('tbody'); tb.innerHTML='';
-      db.matches.sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(m=>{
-        const tr=document.createElement('tr');
-        tr.innerHTML=`
-          <td class="nowrap">${fmtDate(m.date)}</td>
-          <td>${escapeHtml(m.opponent)}</td>
-          <td>${matchResultText(m)}</td>
-          <td>
-            <button class="btn" data-ed="${m.id}">Bewerken</button>
-            <button class="btn danger" data-del="${m.id}">Verwijderen</button>
-          </td>`;
-        tb.appendChild(tr);
-      });
-      qsa('button[data-ed]',tb).forEach(b=>b.addEventListener('click',()=>{
-        const id=+b.getAttribute('data-ed'); const m=matchById(id); if(!m) return;
-        editingMatchId=id; byId('edit-match-id').value=id;
-        byId('mt-opponent').value=m.opponent; byId('mt-date').value=m.date.slice(0,16);
-        byId('mt-location').value=m.location||'';
-        byId('mt-gfor').value=m.gfor??''; byId('mt-gagn').value=m.gagn??''; byId('mt-report').value=m.report||'';
-        renderPresenceCheckboxes(m.present||[]);
-        currentGoals = m.goals || [];
-        renderGoalsForm(currentGoals);
-        // scroll to form
-        byId('ad-matches').scrollIntoView({behavior:'smooth',block:'start'});
-      }));
-      qsa('button[data-del]',tb).forEach(b=>b.addEventListener('click',()=>{
-        const id=+b.getAttribute('data-del');
-        if(!confirm('Wedstrijd verwijderen?')) return;
-        db.matches = db.matches.filter(m=>m.id!==id);
-        // verwijder koppelingen uit stemmingen
-        db.votes.forEach(v=>{ if(v.matchId===id) v.matchId=null; });
-        save(); renderAdminMatches(); renderMatches(); renderStats(); renderVoting();
-      }));
+      const sel = byId('vt-match');
+      sel.innerHTML = matches
+        .map(m => `<option value="${m.id}">${fmtDate(m.date)} vs ${escapeHtml(m.opponent)}</option>`)
+        .join('');
+
+      // lijst vullen
+      const tb = byId('tbl-matches').querySelector('tbody');
+      tb.innerHTML = '';
+      matches
+        .sort((a,b)=>new Date(b.date) - new Date(a.date))
+        .forEach(m=>{
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="nowrap">${fmtDate(m.date)}</td>
+            <td>${escapeHtml(m.opponent)}</td>
+            <td>${matchResultText(m)}</td>
+            <td>
+              <button class="btn" data-ed="${m.id}">Bewerken</button>
+              <button class="btn danger" data-del="${m.id}">Verwijderen</button>
+            </td>`;
+          tb.appendChild(tr);
+        });
+
+      // bewerken
+      qsa('button[data-ed]',tb).forEach(b =>
+        b.addEventListener('click', ()=>{
+          const id = +b.getAttribute('data-ed');
+          const m = matches.find(x => x.id === id);
+          if(!m) return;
+
+          editingMatchId = id;
+          byId('edit-match-id').value = id;
+          byId('mt-opponent').value   = m.opponent;
+          byId('mt-date').value       = m.date ? m.date.slice(0,16) : '';
+          byId('mt-location').value   = m.location || '';
+          byId('mt-gfor').value       = m.gfor ?? '';
+          byId('mt-gagn').value       = m.gagn ?? '';
+          byId('mt-report').value     = m.report || '';
+          renderPresenceCheckboxes(m.present || []);
+          currentGoals = m.goals || [];
+          renderGoalsForm(currentGoals);
+
+          // scroll naar formulier
+          byId('ad-matches').scrollIntoView({behavior:'smooth',block:'start'});
+        })
+      );
+
+      // verwijderen
+      qsa('button[data-del]',tb).forEach(b =>
+        b.addEventListener('click', async ()=>{
+          const id = +b.getAttribute('data-del');
+          if(!confirm('Wedstrijd verwijderen?')) return;
+
+          // wedstrijd verwijderen
+          const { error: delErr } = await supabase
+            .from('matches')
+            .delete()
+            .eq('id', id);
+          if(delErr){
+            console.error("delete match error", delErr);
+            alert("Kon wedstrijd niet verwijderen.");
+            return;
+          }
+
+          // gekoppelde stemmingen loskoppelen
+          const { error: updErr } = await supabase
+            .from('votes')
+            .update({ matchId: null })
+            .eq('matchId', id);
+          if(updErr){
+            console.error("unlink votes error", updErr);
+          }
+
+          // UI verversen
+          renderAdminMatches();
+          renderMatches();
+          renderStats();
+          renderVoting();
+        })
+      );
     }
 
 
+
     // --- VOTES (Admin/Lezer)
-    byId('btn-add-vote').addEventListener('click',()=>{
-      if(!userHasRole('moderator')) return alert('Alleen moderator');
-      const title=byId('vt-title').value.trim(); const matchId=ensureInt(byId('vt-match').value);
-      if(!title || !matchId) return alert('Titel en wedstrijd zijn verplicht');
-      const id=++db.seq.vote;
-      db.votes.push({id,title,matchId,status:'active',createdAt:nowIso(),createdBy:currentUser.id,revealedCount:0});
-      save(); byId('vt-title').value=''; renderAdminVotes(); renderVoting();
+    byId('btn-add-vote').addEventListener('click', async ()=>{
+      if(!userHasRole('moderator')){
+        alert('Alleen moderator');
+        return;
+      }
+
+      const title = byId('vt-title').value.trim();
+      const matchId = ensureInt(byId('vt-match').value);
+
+      if(!title || !matchId){
+        alert('Titel en wedstrijd zijn verplicht');
+        return;
+      }
+
+      const newVote = {
+        title,
+        matchId,
+        status: 'active',
+        createdAt: nowIso(),
+        createdBy: currentUser.id,
+        revealedCount: 0
+      };
+
+      const { error } = await supabase.from('votes').insert(newVote);
+      if(error){
+        console.error("insert vote error", error);
+        alert("Kon stemming niet toevoegen.");
+        return;
+      }
+
+      byId('vt-title').value = '';
+
+      // UI verversen
+      renderAdminVotes();
+      renderVoting();
     });
 
-    function renderAdminVotes(){
-      const tb=byId('tbl-votes').querySelector('tbody'); tb.innerHTML='';
-      db.votes.sort((a,b)=>b.id-a.id).forEach(v=>{
-        const tr=document.createElement('tr');
-        const m = matchById(v.matchId);
-        const cnt = db.userVotes.filter(u=>u.voteId===v.id).length;
-        const statusIcon = v.status==='active'?'st-active':(v.status==='closed'?'st-closed':(v.status==='revealing'?'st-revealing':'st-released'));
-        tr.innerHTML=`
+
+    async function renderAdminVotes(){
+      const tb = byId('tbl-votes').querySelector('tbody');
+      tb.innerHTML = '';
+
+      // alle stemmingen ophalen
+      const { data: votes, error: vErr } = await supabase
+        .from('votes')
+        .select('*')
+        .order('id', { ascending: false });
+      if(vErr){ console.error("load votes error", vErr); return; }
+
+      // alle stemmen per stemming ophalen
+      const { data: userVotes, error: uvErr } = await supabase
+        .from('user_votes')
+        .select('vote_id');
+      if(uvErr){ console.error("load user_votes error", uvErr); return; }
+
+      // wedstrijden voor koppeling
+      const matches = await loadMatches();
+
+      votes.forEach(v=>{
+        const tr = document.createElement('tr');
+        const m = matches.find(mm => mm.id === v.matchId);
+        const cnt = userVotes.filter(u => u.vote_id === v.id).length;
+        const statusIcon =
+          v.status==='active'    ? 'st-active' :
+          v.status==='closed'    ? 'st-closed' :
+          v.status==='revealing' ? 'st-revealing' :
+                                   'st-released';
+
+        tr.innerHTML = `
           <td>${escapeHtml(v.title)}</td>
           <td>${m?escapeHtml(m.opponent):'—'}</td>
           <td><span class="status-dot ${statusIcon}"></span>${v.status}</td>
           <td>${cnt}</td>
           <td class="nowrap">
-            ${userHasRole('moderator') && v.status==='active' ? `<button class="btn warn" data-act="close" data-id="${v.id}">Sluiten</button>`:''}
-            ${(canSeeAdmin() && (v.status==='closed' || v.status==='revealing')) ? `<button class="btn" data-act="open-reveal" data-id="${v.id}">Reveal</button>`:''}
-            ${userHasRole('moderator') && v.status!=='released' ? `<button class="btn primary" data-act="release" data-id="${v.id}">Vrijgeven</button>`:''}
+            ${userHasRole('moderator') && v.status==='active'
+              ? `<button class="btn warn" data-act="close" data-id="${v.id}">Sluiten</button>`
+              : ''}
+            ${(canSeeAdmin() && (v.status==='closed' || v.status==='revealing'))
+              ? `<button class="btn" data-act="open-reveal" data-id="${v.id}">Reveal</button>`
+              : ''}
+            ${userHasRole('moderator') && v.status!=='released'
+              ? `<button class="btn primary" data-act="release" data-id="${v.id}">Vrijgeven</button>`
+              : ''}
           </td>
         `;
         tb.appendChild(tr);
       });
 
-      // actions
-      qsa('button[data-act="close"]',tb).forEach(btn=>btn.addEventListener('click',()=>{
-        const id=+btn.getAttribute('data-id'); const v=voteById(id); if(!v) return;
-        if(!confirm('Stemming sluiten? Gebruikers kunnen daarna niet meer stemmen.')) return;
-        v.status='closed'; save(); renderAdminVotes(); renderVoting();
-      }));
-      qsa('button[data-act="open-reveal"]',tb).forEach(btn=>btn.addEventListener('click',()=>{
-        const id=+btn.getAttribute('data-id'); openRevealPanel(id);
-      }));
-      qsa('button[data-act="release"]',tb).forEach(btn=>btn.addEventListener('click',()=>{
-        const id=+btn.getAttribute('data-id'); const v=voteById(id); if(!v) return;
-        if(!userHasRole('moderator')) return alert('Alleen moderator kan vrijgeven');
-        const total = db.userVotes.filter(u=>u.voteId===id).length;
-        if(v.status!=='released' && v.status!=='revealing' && v.status!=='closed' && v.status!=='active'){
-          // never happens
-        }
-        // >>> STEMMING REVEAL FLOW: pas vrijgeven als alles is geopend (revealedCount == total) of er zijn 0 inzendingen
-        if(total>0 && v.revealedCount < total){
-          return alert('Nog niet alle individuele stemmen getoond. Maak eerst de reveal af.');
-        }
-        if(!confirm('Resultaten definitief vrijgeven? Daarna zijn ze altijd zichtbaar.')) return;
-        v.status='released'; save(); renderAdminVotes(); renderVoting(); closeRevealPanel();
-      }));
+      // acties
+
+      // sluiten
+      qsa('button[data-act="close"]',tb).forEach(btn =>
+        btn.addEventListener('click', async ()=>{
+          const id = +btn.getAttribute('data-id');
+          if(!confirm('Stemming sluiten? Gebruikers kunnen daarna niet meer stemmen.')) return;
+
+          const { error } = await supabase
+            .from('votes')
+            .update({ status: 'closed' })
+            .eq('id', id);
+
+          if(error){
+            console.error("close vote error", error);
+            alert("Kon stemming niet sluiten");
+            return;
+          }
+
+          renderAdminVotes();
+          renderVoting();
+        })
+      );
+
+      // reveal starten (paneel openen)
+      qsa('button[data-act="open-reveal"]',tb).forEach(btn =>
+        btn.addEventListener('click', ()=>{
+          const id = +btn.getAttribute('data-id');
+          openRevealPanel(id);
+        })
+      );
+
+      // vrijgeven
+      qsa('button[data-act="release"]',tb).forEach(btn =>
+        btn.addEventListener('click', async ()=>{
+          const id = +btn.getAttribute('data-id');
+
+          if(!userHasRole('moderator')){
+            alert('Alleen moderator kan vrijgeven');
+            return;
+          }
+
+          // aantal stemmen ophalen
+          const { data: uvTotal, error: uvCountErr } = await supabase
+            .from('user_votes')
+            .select('id', { count: 'exact' })
+            .eq('vote_id', id);
+          if(uvCountErr){ console.error("count votes error", uvCountErr); return; }
+
+          const total = uvTotal?.length || 0;
+
+          // stemming ophalen om revealedCount te checken
+          const v = votes.find(x => x.id === id);
+          if(total > 0 && v.revealedCount < total){
+            alert('Nog niet alle individuele stemmen getoond. Maak eerst de reveal af.');
+            return;
+          }
+
+          if(!confirm('Resultaten definitief vrijgeven? Daarna zijn ze altijd zichtbaar.')) return;
+
+          const { error } = await supabase
+            .from('votes')
+            .update({ status: 'released' })
+            .eq('id', id);
+
+          if(error){
+            console.error("release vote error", error);
+            alert("Kon stemming niet vrijgeven");
+            return;
+          }
+
+          renderAdminVotes();
+          renderVoting();
+          closeRevealPanel();
+        })
+      );
     }
 
-    function openRevealPanel(voteId){
-      const v = voteById(voteId); if(!v) return;
-      activeRevealVoteId = voteId;
-      const panel=byId('reveal-panel'); panel.classList.remove('hidden');
-      const info=byId('reveal-info');
-      const list=byId('reveal-list'); list.innerHTML='';
-      const total = db.userVotes.filter(u=>u.voteId===voteId).length;
-      if(v.status==='closed'){ info.textContent='Status: closed. Start de reveal om stemmen één-voor-één te tonen.'; }
-      if(v.status==='revealing'){ info.textContent=`Status: revealing. Getoond: ${v.revealedCount}/${total}`; }
-      if(v.status==='released'){ info.textContent='Status: released. Alles is al vrijgegeven.'; }
 
-      byId('btn-reveal-start').classList.toggle('hidden', v.status!=='closed');
-      byId('btn-reveal-next').classList.toggle('hidden', v.status!=='revealing');
+    async function openRevealPanel(voteId){
+      // stemming ophalen
+      const { data: vote, error: vErr } = await supabase
+        .from('votes')
+        .select('*')
+        .eq('id', voteId)
+        .single();
+      if(vErr){ console.error("load vote error", vErr); return; }
+      if(!vote) return;
+
+      activeRevealVoteId = voteId;
+
+      const panel = byId('reveal-panel');
+      panel.classList.remove('hidden');
+
+      const info = byId('reveal-info');
+      const list = byId('reveal-list');
+      list.innerHTML = '';
+
+      // stemmen ophalen (chronologisch)
+      const { data: userVotes, error: uvErr } = await supabase
+        .from('user_votes')
+        .select('*')
+        .eq('vote_id', voteId)
+        .order('created_at', { ascending: true });
+      if(uvErr){ console.error("load user_votes error", uvErr); return; }
+
+      const total = userVotes.length;
+
+      if(vote.status==='closed'){
+        info.textContent = 'Status: closed. Start de reveal om stemmen één-voor-één te tonen.';
+      }
+      if(vote.status==='revealing'){
+        info.textContent = `Status: revealing. Getoond: ${vote.revealedCount}/${total}`;
+      }
+      if(vote.status==='released'){
+        info.textContent = 'Status: released. Alles is al vrijgegeven.';
+      }
+
+      byId('btn-reveal-start').classList.toggle('hidden', vote.status!=='closed');
+      byId('btn-reveal-next').classList.toggle('hidden', vote.status!=='revealing');
       byId('btn-release').disabled = !(userHasRole('moderator'));
 
-      // render already revealed items (store them by writing a snapshot with a flag? we will simply show the first revealedCount userVotes in chronological order)
-      const rows = db.userVotes.filter(u=>u.voteId===voteId).sort((a,b)=> new Date(a.createdAt)-new Date(b.createdAt));
-      rows.slice(0, v.revealedCount).forEach((uv,idx)=>{
-        const item=document.createElement('div'); item.className='card';
+      // reeds getoonde items weergeven (eerste revealedCount stemmen in chronologische volgorde)
+      userVotes.slice(0, vote.revealedCount).forEach((uv, idx)=>{
+        const item = document.createElement('div');
+        item.className = 'card';
         item.innerHTML = renderUserVoteItem(uv, idx+1);
         list.appendChild(item);
       });
     }
-    function closeRevealPanel(){
-      activeRevealVoteId = null; byId('reveal-panel').classList.add('hidden'); byId('reveal-list').innerHTML='';
-    }
+
 
     byId('btn-reveal-start').addEventListener('click',()=>{
       if(activeRevealVoteId==null) return;
@@ -1297,23 +1931,63 @@
       if(v.status!=='closed') return alert('Reveal kan alleen vanuit status closed');
       v.status='revealing'; v.revealedCount=0; save(); openRevealPanel(activeRevealVoteId); renderAdminVotes();
     });
-    byId('btn-reveal-next').addEventListener('click',()=>{
-      if(activeRevealVoteId==null) return;
-      const v=voteById(activeRevealVoteId); if(!v) return;
-      // >>> STEMMING REVEAL FLOW: moderator of stemmen_lezer kan telkens 1 volgende stem openen
-      if(!(userHasRole('moderator') || userHasRole('stemmen_lezer'))) return alert('Geen rechten');
-      if(v.status!=='revealing') return alert('Niet in reveal-status');
-      const rows = db.userVotes.filter(u=>u.voteId===activeRevealVoteId).sort((a,b)=> new Date(a.createdAt)-new Date(b.createdAt));
-      if(v.revealedCount >= rows.length){ alert('Alle stemmen zijn al getoond. Moderator kan nu vrijgeven.'); return; }
+    byId('btn-reveal-next').addEventListener('click', async ()=>{
+      if(activeRevealVoteId == null) return;
+
+      // stemming ophalen
+      const { data: v, error: vErr } = await supabase
+        .from('votes')
+        .select('*')
+        .eq('id', activeRevealVoteId)
+        .single();
+      if(vErr){ console.error("load vote error", vErr); return; }
+      if(!v) return;
+
+      // rechten controleren
+      if(!(userHasRole('moderator') || userHasRole('stemmen_lezer'))){
+        alert('Geen rechten');
+        return;
+      }
+      if(v.status !== 'revealing'){
+        alert('Niet in reveal-status');
+        return;
+      }
+
+      // stemmen ophalen (chronologisch)
+      const { data: rows, error: uvErr } = await supabase
+        .from('user_votes')
+        .select('*')
+        .eq('vote_id', activeRevealVoteId)
+        .order('created_at', { ascending: true });
+      if(uvErr){ console.error("load user_votes error", uvErr); return; }
+
+      if(v.revealedCount >= rows.length){
+        alert('Alle stemmen zijn al getoond. Moderator kan nu vrijgeven.');
+        return;
+      }
+
+      // volgende stem pakken
       const uv = rows[v.revealedCount];
-      v.revealedCount++; save();
-      // append to list
-      const list=byId('reveal-list');
-      const item=document.createElement('div'); item.className='card';
-      item.innerHTML = renderUserVoteItem(uv, v.revealedCount);
+
+      // revealedCount verhogen in db
+      const { error: updErr } = await supabase
+        .from('votes')
+        .update({ revealedCount: v.revealedCount + 1 })
+        .eq('id', v.id);
+      if(updErr){ console.error("update revealedCount error", updErr); return; }
+
+      // toevoegen aan lijst
+      const list = byId('reveal-list');
+      const item = document.createElement('div');
+      item.className = 'card';
+      item.innerHTML = renderUserVoteItem(uv, v.revealedCount + 1);
       list.appendChild(item);
-      byId('reveal-info').textContent = `Status: revealing. Getoond: ${v.revealedCount}/${rows.length}`;
+
+      // statusinfo bijwerken
+      byId('reveal-info').textContent =
+        `Status: revealing. Getoond: ${v.revealedCount + 1}/${rows.length}`;
     });
+
 
     function renderUserVoteItem(uv, idx){
       const user = userById(uv.userId);

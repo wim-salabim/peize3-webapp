@@ -410,7 +410,12 @@
         </div>
     </section>
 </div>
-
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script>
+    const SUPABASE_URL = "https://hwqocccuzvnmrbxhtsey.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3cW9jY2N1enZubXJieGh0c2V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNjU4MjIsImV4cCI6MjA3MjY0MTgyMn0.yZHHLfFVU_3S4Rnoxzo6srWv5Dfu8WsvL93ijMA-HmU";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+</script>
 <script>
     // ======================================================================
     //  DATA & PERSISTENTIE

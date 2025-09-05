@@ -161,13 +161,14 @@
         <div class="row">
             <div class="col card">
                 <h1> Welkom op de Peize 3 WebApp</h1>
+
                 <div class="divider"></div>
                 <div class="grid">
                     <div class="card">
                         <div class="kpi">Gespeelde wedstrijden</div>
-                        <div class="subtle">Winst: <span id="home-wins">0</span></div>
-                        <div class="subtle">Gelijk: <span id="home-draws">0</span></div>
-                        <div class="subtle">Verlies: <span id="home-losses">0</span></div>
+                        <div class="subtle">Winst: <span id="home-wins">0</span> (<span id="home-wins-pct">0%</span>)</div>
+                        <div class="subtle">Gelijk: <span id="home-draws">0</span> (<span id="home-draws-pct">0%</span>)</div>
+                        <div class="subtle">Verlies: <span id="home-losses">0</span> (<span id="home-losses-pct">0%</span>)</div>
                         <br>
                         <div class="kpi">Aantal punten: <span id="home-points">0</span></div>
                     </div>
@@ -689,10 +690,19 @@
         }
       });
       const points = wins*3 + draws;
+      const total = wins + draws + losses;
 
       byId('home-wins').textContent   = wins;
       byId('home-draws').textContent  = draws;
       byId('home-losses').textContent = losses;
+
+      const pct = (n, d) => d > 0 ? Math.round((n / d) * 100) : 0;
+
+      byId("home-wins-pct").textContent   = pct(wins, total)   + "%";
+      byId("home-draws-pct").textContent  = pct(draws, total)  + "%";
+      byId("home-losses-pct").textContent = pct(losses, total) + "%";
+
+
       byId('home-points').textContent = points;
 
       // Doelpunten & assists tellen

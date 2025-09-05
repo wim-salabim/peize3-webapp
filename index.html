@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Peize 3 WebApp</title>
+    <style>
+        :root{
+          --bg:#0f172a;
+          --card:#111827;
+          --muted:#334155;
+          --text:#e5e7eb;
+          --accent:#22c55e;
+          --accent-2:#60a5fa;
+          --danger:#ef4444;
+          --warn:#f59e0b;
+          --border:#1f2937;
+        }
+        *{box-sizing:border-box}
+        body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:var(--bg);color:var(--text)}
+        a{color:inherit}
+        .wrap{max-width:1100px;margin:0 auto;padding:20px}
+        header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px;background:#0b1220;position:sticky;top:0;z-index:10;border-bottom:1px solid var(--border)}
+        .brand{font-weight:700;letter-spacing:.3px}
+        nav{display:flex;flex-wrap:wrap;gap:8px}
+        .btn{padding:8px 12px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;cursor:pointer}
+        .btn:hover{filter:brightness(1.15)}
+        .btn.primary{background:linear-gradient(135deg,var(--accent-2),var(--accent));border-color:transparent;color:#0b1220;font-weight:600}
+        .btn.danger{background:linear-gradient(135deg,#ef4444,#b91c1c);border-color:transparent;color:white}
+        .btn.warn{background:linear-gradient(135deg,#f59e0b,#b45309);border-color:transparent;color:white}
+        .btn.ghost{background:transparent}
+        .chip{display:inline-flex;gap:6px;align-items:center;padding:2px 8px;border:1px solid var(--border);border-radius:999px;background:#0b1220;font-size:.8rem;opacity:.9}
+        .row{display:flex;gap:16px;align-items:stretch}
+        .col{flex:1}
+        .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px}
+        .muted{color:#cbd5e1;opacity:.9}
+        .subtle{color:#9ca3af}
+        .section{display:none;margin-top:18px}
+        .section.active{display:block}
+        h1,h2,h3{margin:.2rem 0 .7rem}
+        h1{font-size:1.4rem}
+        h2{font-size:1.2rem}
+        h3{font-size:1.05rem}
+        input,select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0b1220;color:var(--text)}
+        label{display:block;font-size:.92rem;margin:8px 0 6px}
+        table{width:100%;border-collapse:collapse}
+        td,th{border-bottom:1px solid var(--border);padding:8px 6px;text-align:left;font-size:.95rem}
+        tr:hover{background:#0b1220}
+        .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+        .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#0b1220;border:1px solid var(--border);font-size:.8rem}
+        .hidden{display:none !important}
+        .sticky-actions{position:sticky;bottom:0;display:flex;gap:10px;padding-top:10px}
+        .tabbar{display:flex;gap:8px;margin:4px 0 12px}
+        .tabbar .btn{padding:6px 10px}
+        .note{font-size:.9rem;color:#cbd5e1}
+        .divider{height:1px;background:var(--border);margin:8px 0 12px}
+        .code{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;background:#0b1220;border:1px solid var(--border);padding:6px 8px;border-radius:8px}
+        .kpi{font-weight:700;font-size:1.4rem}
+        .tag{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;background:#0b1220;border:1px solid var(--border);border-radius:999px;font-size:.8rem}
+        .list{display:flex;flex-direction:column;gap:10px}
+        .vote-row{display:flex;gap:8px;align-items:center}
+        .vote-box{border:1px dashed var(--border);border-radius:12px;padding:10px}
+        .reveal-box{background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:10px}
+        .status-dot{width:8px;height:8px;border-radius:999px;display:inline-block;margin-right:6px}
+        .st-active{background:#22c55e}.st-closed{background:#f59e0b}.st-revealing{background:#60a5fa}.st-released{background:#a78bfa}
+        .help{font-size:.85rem;color:#9ca3af}
+        .nowrap{white-space:nowrap}
+        .tight td{padding:6px 4px}
+    </style>
+</head>
+<body>
+<header>
+    <div class="brand">⚽ Peize 3 WebApp</div>
+    <nav id="nav">
+        <button class="btn" data-go="home">Home</button>
+        <button class="btn" data-go="matches">Wedstrijden</button>
+        <button class="btn" data-go="stats">Statistieken</button>
+        <button class="btn" data-go="voting">Stemmen</button>
+        <span id="nav-admin" class="hidden">
+        <button class="btn" data-go="admin">Beheer</button>
+      </span>
+        <span id="nav-auth">
+        <button class="btn primary" data-go="login">Inloggen</button>
+      </span>
+        <span id="nav-user" class="hidden">
+        <span class="chip" id="chip-user">•</span>
+        <button class="btn ghost" id="btn-logout">Uitloggen</button>
+      </span>
+    </nav>
+</header>
+
+<div class="wrap">
+    <!-- HOME -->
+    <section id="home" class="section active">
+        <div class="row">
+            <div class="col card">
+                <h1>Welkom</h1>
+                <div class="muted">Eén bestand. Alles offline. Data wordt bewaard in <span class="code">localStorage</span>.</div>
+                <div class="divider"></div>
+                <div class="grid">
+                    <div class="card">
+                        <div class="subtle">Gespeelde wedstrijden</div>
+                        <div class="kpi"><span id="kpi-played">0</span></div>
+                    </div>
+                    <div class="card">
+                        <div class="subtle">Aankomende wedstrijden (programma)</div>
+                        <div class="kpi"><span id="kpi-upcoming">0</span></div>
+                    </div>
+                    <div class="card">
+                        <div class="subtle">Aantal spelers</div>
+                        <div class="kpi"><span id="kpi-players">0</span></div>
+                    </div>
+                    <div class="card">
+                        <div class="subtle">Actieve stemmingen</div>
+                        <div class="kpi"><span id="kpi-votes">0</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- MATCHES (Programma / Uitslagen) -->
+    <section id="matches" class="section">
+        <div class="card">
+            <h1>Wedstrijden</h1>
+            <div class="tabbar">
+                <button class="btn" id="tab-programma">Programma</button>
+                <button class="btn" id="tab-uitslagen">Uitslagen</button>
+            </div>
+            <div id="programma-list" class="list"></div>
+            <div id="uitslagen-list" class="list hidden"></div>
+        </div>
+    </section>
+
+    <!-- STATS -->
+    <section id="stats" class="section">
+        <div class="card">
+            <h1>Statistieken</h1>
+            <div class="help">⚠️ Gele/Rode kaarten zijn verwijderd. We houden <b>gespeelde wedstrijden</b> per speler bij op basis van het wedstrijdformulier (aanwezigheid).</div>
+            <div class="divider"></div>
+            <table id="tbl-stats" class="tight">
+                <thead><tr><th>Speler</th><th>Positie</th><th class="nowrap">Gespeelde wedstrijden</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- VOTING (voor gebruikers) -->
+    <section id="voting" class="section">
+        <div class="card">
+            <h1>Stemmen</h1>
+            <div id="vote-active-list" class="list"></div>
+            <div class="divider"></div>
+            <h2>Vrijgegeven resultaten</h2>
+            <div id="vote-released-list" class="list"></div>
+        </div>
+    </section>
+
+    <!-- LOGIN -->
+    <section id="login" class="section">
+        <div class="row">
+            <div class="col card">
+                <h1>Inloggen</h1>
+                <label>Gebruikersnaam</label>
+                <input id="login-user" placeholder="bijv. admin"/>
+                <label>Wachtwoord</label>
+                <input id="login-pass" type="password" placeholder="••••••"/>
+                <div class="sticky-actions">
+                    <button id="btn-login" class="btn primary">Inloggen</button>
+                    <span class="help">Standaard accounts: <span class="code">admin/admin123</span>, <span class="code">lezer/lezer123</span></span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ADMIN -->
+    <section id="admin" class="section">
+        <div class="card">
+            <h1>Beheer</h1>
+            <div class="tabbar">
+                <button class="btn" data-adtab="users">Gebruikers</button>
+                <button class="btn" data-adtab="players">Spelers</button>
+                <button class="btn" data-adtab="matches">Wedstrijden</button>
+                <button class="btn" data-adtab="votes">Stemmingen</button>
+            </div>
+
+            <!-- USERS TAB -->
+            <div id="ad-users" class="adtab">
+                <div class="row">
+                    <div class="col card">
+                        <h2>Nieuwe gebruiker</h2>
+                        <label>Gebruikersnaam</label><input id="new-usr-name"/>
+                        <label>Wachtwoord</label><input id="new-usr-pass" type="password"/>
+                        <label>Rol</label>
+                        <select id="new-usr-role">
+                            <option value="user">user</option>
+                            <option value="stemmen_lezer">stemmen_lezer</option> <!-- >>> STEMMEN LEZER ROL -->
+                            <option value="moderator">moderator</option>
+                        </select>
+                        <div class="sticky-actions">
+                            <button class="btn primary" id="btn-add-user">Toevoegen</button>
+                        </div>
+                    </div>
+                    <div class="col card">
+                        <h2>Bestaande gebruikers</h2>
+                        <table id="tbl-users">
+                            <thead><tr><th>Naam</th><th>Rol</th><th>Wijzig</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PLAYERS TAB -->
+            <div id="ad-players" class="adtab hidden">
+                <div class="row">
+                    <div class="col card">
+                        <h2>Speler toevoegen / bewerken</h2>
+                        <input type="hidden" id="edit-player-id">
+                        <label>Naam</label><input id="pl-name"/>
+                        <label>Positie</label><input id="pl-pos"/>
+                        <div class="sticky-actions">
+                            <button class="btn primary" id="btn-save-player">Opslaan</button>
+                            <button class="btn ghost" id="btn-cancel-player">Annuleren</button>
+                        </div>
+                    </div>
+                    <div class="col card">
+                        <h2>Spelers</h2>
+                        <table id="tbl-players" class="tight">
+                            <thead><tr><th>Naam</th><th>Positie</th><th>Acties</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MATCHES TAB -->
+            <div id="ad-matches" class="adtab hidden">
+                <div class="row">
+                    <div class="col card">
+                        <h2>Wedstrijd toevoegen / bewerken</h2>
+                        <input type="hidden" id="edit-match-id">
+                        <label>Tegenstander</label><input id="mt-opponent"/>
+                        <label>Datum & tijd</label><input id="mt-date" type="datetime-local"/>
+                        <label>Locatie</label><input id="mt-location" placeholder="optioneel"/>
+                        <label>Uitslag (onze goals)</label><input id="mt-gfor" type="number" min="0" placeholder="leeg laten als nog niet gespeeld"/>
+                        <label>Uitslag (tegenstander goals)</label><input id="mt-gagn" type="number" min="0" placeholder=""/>
+                        <label>Verslag</label><textarea id="mt-report" rows="3" placeholder="wedstrijdverslag (optioneel)"></textarea>
+                        <div class="divider"></div>
+                        <h3>Aanwezige spelers</h3>
+                        <div id="presence-box" class="grid"></div>
+                        <div class="sticky-actions">
+                            <button class="btn primary" id="btn-save-match">Opslaan</button>
+                            <button class="btn ghost" id="btn-cancel-match">Annuleren</button>
+                        </div>
+                    </div>
+                    <div class="col card">
+                        <h2>Wedstrijden</h2>
+                        <table id="tbl-matches">
+                            <thead><tr><th>Datum</th><th>Tegenstander</th><th>Uitslag</th><th>Acties</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VOTES TAB -->
+            <div id="ad-votes" class="adtab hidden">
+                <div class="row">
+                    <div class="col card">
+                        <h2>Nieuwe stemming</h2>
+                        <label>Titel</label><input id="vt-title" placeholder="bv. Stemming speelronde 5"/>
+                        <label>Wedstrijd</label>
+                        <select id="vt-match"></select>
+                        <div class="sticky-actions">
+                            <button class="btn primary" id="btn-add-vote">Stemming starten</button>
+                        </div>
+                        <div class="help">Stemming start met status <b>active</b>. Alleen moderator kan <b>sluiten</b> en <b>vrijgeven</b>.</div>
+                    </div>
+                    <div class="col card">
+                        <h2>Stemmingen</h2>
+                        <table id="tbl-votes" class="tight">
+                            <thead>
+                            <tr>
+                                <th>Titel</th>
+                                <th>Wedstrijd</th>
+                                <th>Status</th>
+                                <th>Inzendingen</th>
+                                <th>Acties</th>
+                            </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                        <div id="reveal-panel" class="reveal-box hidden">
+                            <h3>Individuele stemmen tonen</h3>
+                            <div id="reveal-info" class="muted"></div>
+                            <div id="reveal-list" class="list" style="max-height:220px;overflow:auto;"></div>
+                            <div class="sticky-actions">
+                                <button class="btn" id="btn-reveal-next">Volgende stem tonen</button>
+                                <button class="btn warn" id="btn-reveal-start">Start reveal</button>
+                                <button class="btn primary" id="btn-release" title="Moderator-only">Vrijgeven</button>
+                            </div>
+                            <div class="help">In de <b>revealing</b>-fase kunnen zowel <b>moderator</b> als <b>stemmen_lezer</b> één-voor-één stemmen openen. Pas als alle stemmen getoond zijn, kan de moderator vrijgeven.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+    // ======================================================================
+    //  DATA & PERSISTENTIE
+    // ======================================================================
+    const LS_KEY='peize3_data_v2';
+    const nowIso = () => new Date().toISOString();
+    const byId = id => document.getElementById(id);
+    const qs = (sel,root=document)=>root.querySelector(sel);
+    const qsa = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+
+    // default seed
+    const seed = {
+      users:[
+        {id:1,username:'admin',password:'admin123',role:'moderator'},
+        {id:2,username:'lezer',password:'lezer123',role:'stemmen_lezer'},
+        {id:3,username:'speler',password:'speler123',role:'user'}
+      ],
+      players:[
+        {id:1,name:'Jan Jansen',position:'Aanvaller'},
+        {id:2,name:'Piet Peters',position:'Middenveld'},
+        {id:3,name:'Klaas Klaassen',position:'Verdediging'},
+        {id:4,name:'Henk Hendriks',position:'Keeper'}
+      ],
+      matches:[
+        {id:1,opponent:'FC Voorbeeld',date:addDaysISO(3),location:'Thuis',gfor:null,gagn:null,report:'',present:[]},
+        {id:2,opponent:'SV Demo',date:addDaysISO(-7),location:'Uit',gfor:2,gagn:2,report:'Leuke pot',present:[1,2,3]}
+      ],
+      votes:[
+        // status: active | closed | revealing | released
+        {id:1,title:'Stemming speelronde (SV Demo)',matchId:2,status:'active',createdAt:nowIso(),createdBy:1,revealedCount:0}
+      ],
+      userVotes:[
+        // {voteId,userId,king,kut,bonanza,comment,createdAt}
+      ],
+      seq:{user:3,player:4,match:2,vote:1}
+    };
+
+    function addDaysISO(d){
+      const dt=new Date(); dt.setDate(dt.getDate()+d);
+      dt.setMinutes(dt.getMinutes()-dt.getTimezoneOffset()); // local to ISO input
+      return dt.toISOString().slice(0,16);
+    }
+
+    function load(){
+      const raw=localStorage.getItem(LS_KEY);
+      if(!raw){ localStorage.setItem(LS_KEY,JSON.stringify(seed)); return structuredClone(seed); }
+      try{ return JSON.parse(raw); }catch(e){ console.error(e); localStorage.setItem(LS_KEY,JSON.stringify(seed)); return structuredClone(seed); }
+    }
+    function save(){ localStorage.setItem(LS_KEY,JSON.stringify(db)); }
+
+    let db = load();
+    let currentUser = null;
+    let editingPlayerId = null;
+    let editingMatchId = null;
+    let activeRevealVoteId = null;
+
+    // ======================================================================
+    //  HELPers
+    // ======================================================================
+    function fmtDate(d){ if(!d) return ''; const t=new Date(d); return t.toLocaleString(); }
+    function sum(arr){ return arr.reduce((a,b)=>a+b,0); }
+    function ensureInt(v){ const n=parseInt(v,10); return isNaN(n)?null:n; }
+    function matchResultText(m){ if(m.gfor==null || m.gagn==null) return '—'; return m.gfor+' - '+m.gagn; }
+    function isUpcoming(m){ return (new Date(m.date) > new Date()) && (m.gfor==null || m.gagn==null); }
+    function isPlayed(m){ return Array.isArray(m.present) && m.present.length>0; } // >>> STATISTIEKEN OPSCHOON
+    function playerById(id){ return db.players.find(p=>p.id===id); }
+    function matchById(id){ return db.matches.find(m=>m.id===id); }
+    function voteById(id){ return db.votes.find(v=>v.id===id); }
+    function userById(id){ return db.users.find(u=>u.id===id); }
+    function userHasRole(role){ return currentUser && currentUser.role===role; }
+    function canSeeAdmin(){ return currentUser && (currentUser.role==='moderator' || currentUser.role==='stemmen_lezer'); } // stemmen_lezer mag reveal-paneel zien
+    function uniq(arr){ return Array.from(new Set(arr)); }
+
+    // ======================================================================
+    //  AUTH & NAV
+    // ======================================================================
+    function updateNav(){
+      byId('nav-auth').classList.toggle('hidden', !!currentUser);
+      byId('nav-user').classList.toggle('hidden', !currentUser);
+      byId('nav-admin').classList.toggle('hidden', !canSeeAdmin());
+      byId('chip-user').textContent = currentUser ? `${currentUser.username} (${currentUser.role})` : '•';
+    }
+    function show(sec){
+      qsa('.section').forEach(s=>s.classList.remove('active'));
+      byId(sec).classList.add('active');
+    }
+    qsa('nav .btn[data-go]').forEach(b=>b.addEventListener('click', e=>{
+      const sec=e.target.getAttribute('data-go');
+      show(sec);
+      if(sec==='matches') renderMatches();
+      if(sec==='stats') renderStats();
+      if(sec==='voting') renderVoting();
+      if(sec==='admin') renderAdmin();
+    }));
+    byId('btn-logout').addEventListener('click',()=>{ currentUser=null; updateNav(); show('home'); });
+
+    byId('btn-login').addEventListener('click',()=>{
+      const u=byId('login-user').value.trim();
+      const p=byId('login-pass').value;
+      const hit=db.users.find(x=>x.username===u && x.password===p);
+      if(!hit){ alert('Onjuiste inlog'); return; }
+      currentUser = hit;
+      updateNav(); show('home'); renderAll();
+    });
+
+    // ======================================================================
+    //  HOME KPIs
+    // ======================================================================
+    function renderKPIs(){
+      byId('kpi-players').textContent = db.players.length;
+      byId('kpi-played').textContent = db.matches.filter(isPlayed).length;
+      byId('kpi-upcoming').textContent = db.matches.filter(isUpcoming).length;
+      byId('kpi-votes').textContent = db.votes.filter(v=>v.status==='active').length;
+    }
+
+    // ======================================================================
+    //  MATCHES VIEW (Programma/Uitslagen)  -- Programma blijft bestaan
+    // ======================================================================
+    byId('tab-programma').addEventListener('click',()=>{ byId('programma-list').classList.remove('hidden'); byId('uitslagen-list').classList.add('hidden'); });
+    byId('tab-uitslagen').addEventListener('click',()=>{ byId('programma-list').classList.add('hidden'); byId('uitslagen-list').classList.remove('hidden'); });
+
+    function renderMatches(){
+      const pl = byId('programma-list'); pl.innerHTML='';
+      const ul = byId('uitslagen-list'); ul.innerHTML='';
+      const upcoming = db.matches.filter(isUpcoming).sort((a,b)=>new Date(a.date)-new Date(b.date));
+      const results = db.matches.filter(m=>m.gfor!=null && m.gagn!=null).sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+      upcoming.forEach(m=>{
+        const div=document.createElement('div'); div.className='card';
+        div.innerHTML = `
+          <div class="row">
+            <div class="col">
+              <h3>${fmtDate(m.date)} • vs ${escapeHtml(m.opponent)}</h3>
+              <div class="subtle">${m.location||''}</div>
+              <div class="pill">Programma</div>
+            </div>
+            <div class="col" style="max-width:220px">
+              <div>Uitslag: <b>${matchResultText(m)}</b></div>
+            </div>
+          </div>`;
+        pl.appendChild(div);
+      });
+
+      results.forEach(m=>{
+        const div=document.createElement('div'); div.className='card';
+        const presentNames = (m.present||[]).map(pid=>playerById(pid)?.name).filter(Boolean).join(', ') || '—';
+        div.innerHTML = `
+          <div class="row">
+            <div class="col">
+              <h3>${fmtDate(m.date)} • vs ${escapeHtml(m.opponent)}</h3>
+              <div class="subtle">${m.location||''}</div>
+              <div class="pill">Uitslag: <b>${matchResultText(m)}</b></div>
+              <div class="help">Aanwezigen: ${presentNames}</div>
+            </div>
+            <div class="col" style="max-width:220px">
+              <div>${m.report?escapeHtml(m.report):''}</div>
+            </div>
+          </div>`;
+        ul.appendChild(div);
+      });
+    }
+
+    // ======================================================================
+    //  STATS (gespeelde wedstrijden per speler)  -- kaarten verwijderd
+    // ======================================================================
+    function renderStats(){
+      const tb=byId('tbl-stats').querySelector('tbody');
+      tb.innerHTML='';
+      const counts = Object.fromEntries(db.players.map(p=>[p.id,0]));
+      db.matches.forEach(m=> (m.present||[]).forEach(pid=>counts[pid]=(counts[pid]||0)+1) );
+      db.players.forEach(p=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.position||'')}</td><td>${counts[p.id]||0}</td>`;
+        tb.appendChild(tr);
+      });
+    }
+
+    // ======================================================================
+    //  VOTING (user)
+    //  - Resultaten geheim tot vrijgave
+    //  - reveal flow hieronder in Admin -> Stemmingen
+    // ======================================================================
+    function renderVoting(){
+      const activeBox=byId('vote-active-list'); activeBox.innerHTML='';
+      const relBox=byId('vote-released-list'); relBox.innerHTML='';
+
+      const myId = currentUser?.id;
+      const activeVotes = db.votes.filter(v=>v.status==='active' || v.status==='closed' || v.status==='revealing'); // zichtbaar maar resultaten geheim
+      const releasedVotes = db.votes.filter(v=>v.status==='released');
+
+      activeVotes.forEach(v=>{
+        const card=document.createElement('div'); card.className='card';
+        const m = matchById(v.matchId);
+        const mySubmission = db.userVotes.find(u=>u.voteId===v.id && u.userId===myId);
+        let statusIcon = v.status==='active'?'st-active':(v.status==='closed'?'st-closed':(v.status==='revealing'?'st-revealing':'st-released'));
+        card.innerHTML = `
+          <div class="row">
+            <div class="col">
+              <h3><span class="status-dot ${statusIcon}"></span>${escapeHtml(v.title)}</h3>
+              <div class="subtle">Wedstrijd: ${m?escapeHtml(m.opponent):'—'} | Status: <b>${v.status}</b></div>
+            </div>
+          </div>
+          <div class="divider"></div>
+        `;
+
+        const body=document.createElement('div');
+        if(v.status==='active'){
+          if(!currentUser){ body.innerHTML='<div class="help">Log in om te stemmen.</div>'; }
+          else if(mySubmission){ body.innerHTML='<div class="pill">Je hebt al gestemd. Resultaten blijven verborgen tot vrijgave.</div>'; }
+          else{
+            body.appendChild(renderVoteForm(v));
+          }
+        } else {
+          body.innerHTML='<div class="help">Stemming is niet actief. Resultaten blijven verborgen tot vrijgave.</div>';
+        }
+        card.appendChild(body);
+        activeBox.appendChild(card);
+      });
+
+      releasedVotes.forEach(v=>{
+        const card=document.createElement('div'); card.className='card';
+        const m = matchById(v.matchId);
+        const agg = aggregateVote(v.id);
+        card.innerHTML = `
+          <h3><span class="status-dot st-released"></span>${escapeHtml(v.title)}</h3>
+          <div class="subtle">Wedstrijd: ${m?escapeHtml(m.opponent):'—'} | Status: <b>${v.status}</b></div>
+          <div class="divider"></div>
+          ${renderAggHtml(agg)}
+        `;
+        relBox.appendChild(card);
+      });
+    }
+
+    function renderVoteForm(v){
+      const box=document.createElement('div'); box.className='vote-box';
+      const opts = db.players.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+      box.innerHTML = `
+        <div class="vote-row"><label style="min-width:160px">King of the Match</label><select class="vote-king"><option value="">—</option>${opts}</select></div>
+        <div class="vote-row"><label style="min-width:160px">Kut van de Week</label><select class="vote-kut"><option value="">—</option>${opts}</select></div>
+        <div class="vote-row"><label style="min-width:160px">Bonanza</label><select class="vote-bonanza"><option value="">—</option>${opts}</select></div>
+        <label>Opmerking</label><textarea class="vote-comment" rows="2" placeholder="optioneel"></textarea>
+        <div class="sticky-actions"><button class="btn primary">Versturen</button></div>
+      `;
+      box.querySelector('button').addEventListener('click',()=>{
+        if(!currentUser){ alert('Log in om te stemmen.'); return; }
+        const king=ensureInt(box.querySelector('.vote-king').value);
+        const kut=ensureInt(box.querySelector('.vote-kut').value);
+        const bon=ensureInt(box.querySelector('.vote-bonanza').value);
+        const comment=box.querySelector('.vote-comment').value.trim();
+        db.userVotes.push({voteId:v.id,userId:currentUser.id,king,kut,bonanza:bon,comment,createdAt:nowIso()});
+        save(); renderVoting(); renderAdminVotes();
+      });
+      return box;
+    }
+
+    function aggregateVote(voteId){
+      const rows = db.userVotes.filter(u=>u.voteId===voteId);
+      const tally = {king:{}, kut:{}, bonanza:{}};
+      rows.forEach(r=>{
+        if(r.king) tally.king[r.king]=(tally.king[r.king]||0)+1;
+        if(r.kut) tally.kut[r.kut]=(tally.kut[r.kut]||0)+1;
+        if(r.bonanza) tally.bonanza[r.bonanza]=(tally.bonanza[r.bonanza]||0)+1;
+      });
+      return tally;
+    }
+    function renderAggHtml(agg){
+      const mk = (obj,title)=>{
+        const arr = Object.entries(obj).sort((a,b)=>b[1]-a[1]);
+        if(arr.length===0) return `<div><b>${title}:</b> —</div>`;
+        return `<div><b>${title}:</b> `+arr.map(([pid,c])=>`${escapeHtml(playerById(+pid)?.name||'Onbekend')} <span class="pill">${c}</span>`).join(', ') + `</div>`
+      };
+      return mk(agg.king,'King of the Match') + mk(agg.kut,'Kut van de Week') + mk(agg.bonanza,'Bonanza');
+    }
+
+    // ======================================================================
+    //  ADMIN
+    // ======================================================================
+    function renderAdmin(){
+      // tab visible permissions
+      qsa('.adtab').forEach(x=>x.classList.add('hidden'));
+      byId('ad-users').classList.toggle('hidden', !userHasRole('moderator'));
+      byId('ad-players').classList.toggle('hidden', !userHasRole('moderator'));
+      byId('ad-matches').classList.toggle('hidden', !userHasRole('moderator'));
+      // Stemmingen-tab zichtbaar voor moderator en stemmen_lezer
+      byId('ad-votes').classList.toggle('hidden', !canSeeAdmin());
+
+      // default open the first visible tab
+      const visibleTabs = [
+        {key:'users',el:'ad-users',btnSel:"[data-adtab='users']"},
+        {key:'players',el:'ad-players',btnSel:"[data-adtab='players']"},
+        {key:'matches',el:'ad-matches',btnSel:"[data-adtab='matches']"},
+        {key:'votes',el:'ad-votes',btnSel:"[data-adtab='votes']"}
+      ].filter(x=>!byId(x.el).classList.contains('hidden'));
+      qsa('.adtab').forEach(x=>x.classList.add('hidden'));
+      if(visibleTabs.length>0){ byId(visibleTabs[0].el).classList.remove('hidden'); }
+
+      // tab buttons
+      qsa('[data-adtab]').forEach(btn=>{
+        btn.onclick=()=>{
+          qsa('.adtab').forEach(x=>x.classList.add('hidden'));
+          const target=btn.getAttribute('data-adtab');
+          byId('ad-'+target).classList.remove('hidden');
+        };
+      });
+
+      renderAdminUsers();
+      renderAdminPlayers();
+      renderAdminMatches();
+      renderAdminVotes();
+    }
+
+    // --- USERS
+    byId('btn-add-user').addEventListener('click',()=>{
+      const name=byId('new-usr-name').value.trim();
+      const pass=byId('new-usr-pass').value;
+      const role=byId('new-usr-role').value;
+      if(!name || !pass) return alert('Naam en wachtwoord verplicht');
+      if(db.users.some(u=>u.username===name)) return alert('Gebruikersnaam bestaat al');
+      const id=++db.seq.user;
+      db.users.push({id,username:name,password:pass,role});
+      save(); renderAdminUsers();
+      byId('new-usr-name').value=''; byId('new-usr-pass').value=''; byId('new-usr-role').value='user';
+    });
+    function renderAdminUsers(){
+      const tb=byId('tbl-users').querySelector('tbody'); tb.innerHTML='';
+      db.users.forEach(u=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
+          <td>${escapeHtml(u.username)}</td>
+          <td>
+            ${currentUser?.role==='moderator'
+              ? `<select data-uid="${u.id}" class="role-sel">
+                   <option value="user"${u.role==='user'?' selected':''}>user</option>
+                   <option value="stemmen_lezer"${u.role==='stemmen_lezer'?' selected':''}>stemmen_lezer</option>
+                   <option value="moderator"${u.role==='moderator'?' selected':''}>moderator</option>
+                 </select>`
+              : `<span class="pill">${u.role}</span>`}
+          </td>
+          <td>${currentUser?.role==='moderator' ? `<button class="btn" data-act="reset" data-id="${u.id}">Wachtw. reset</button>`:''}</td>
+        `;
+        tb.appendChild(tr);
+      });
+      qsa('.role-sel',tb).forEach(sel=> sel.addEventListener('change', e=>{
+        const id=+e.target.getAttribute('data-uid');
+        const u=userById(id); if(!u) return;
+        u.role=e.target.value; save(); updateNav(); renderAdmin(); // update visibility
+      }));
+      qsa('button[data-act="reset"]',tb).forEach(btn=>btn.addEventListener('click',()=>{
+        const id=+btn.getAttribute('data-id'); const u=userById(id); if(!u) return;
+        const np=prompt('Nieuw wachtwoord voor '+u.username, 'changeme');
+        if(np){ u.password=np; save(); alert('Wachtwoord aangepast'); }
+      }));
+    }
+
+    // --- PLAYERS
+    byId('btn-save-player').addEventListener('click',()=>{
+      const name=byId('pl-name').value.trim(); const pos=byId('pl-pos').value.trim();
+      if(!name) return alert('Naam verplicht');
+      if(editingPlayerId){
+        const p = playerById(editingPlayerId); if(!p) return;
+        p.name=name; p.position=pos;
+        editingPlayerId=null;
+      } else {
+        const id=++db.seq.player; db.players.push({id,name,position:pos});
+      }
+      save(); byId('pl-name').value=''; byId('pl-pos').value=''; renderAdminPlayers(); renderMatches(); renderStats(); renderVoting();
+    });
+    byId('btn-cancel-player').addEventListener('click',()=>{ editingPlayerId=null; byId('pl-name').value=''; byId('pl-pos').value=''; });
+    function renderAdminPlayers(){
+      // presence checkboxes template
+      renderPresenceCheckboxes();
+      const tb=byId('tbl-players').querySelector('tbody'); tb.innerHTML='';
+      db.players.forEach(p=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.position||'')}</td>
+          <td>
+            <button class="btn" data-ed="${p.id}">Bewerken</button>
+            <button class="btn danger" data-del="${p.id}">Verwijderen</button>
+          </td>`;
+        tb.appendChild(tr);
+      });
+      qsa('button[data-ed]',tb).forEach(b=>b.addEventListener('click',()=>{
+        const id=+b.getAttribute('data-ed'); const p=playerById(id); if(!p) return;
+        editingPlayerId=id; byId('pl-name').value=p.name; byId('pl-pos').value=p.position||'';
+      }));
+      qsa('button[data-del]',tb).forEach(b=>b.addEventListener('click',()=>{
+        const id=+b.getAttribute('data-del');
+        if(!confirm('Deze speler verwijderen?')) return;
+        db.players = db.players.filter(p=>p.id!==id);
+        // verwijder ook uit aanwezigheden
+        db.matches.forEach(m=> m.present = (m.present||[]).filter(pid=>pid!==id) );
+        save(); renderAdminPlayers(); renderMatches(); renderStats(); renderVoting();
+      }));
+    }
+
+    // --- MATCHES
+    function renderPresenceCheckboxes(selected=[]){
+      const box=byId('presence-box'); box.innerHTML='';
+      db.players.forEach(p=>{
+        const div=document.createElement('div'); div.className='player card';
+        div.innerHTML=`
+          <label style="display:flex;gap:8px;align-items:center">
+            <input type="checkbox" value="${p.id}" ${selected.includes(p.id)?'checked':''}/>
+            <span>${escapeHtml(p.name)}</span>
+            <span class="subtle" style="margin-left:auto">${escapeHtml(p.position||'')}</span>
+          </label>`;
+        box.appendChild(div);
+      });
+    }
+    byId('btn-save-match').addEventListener('click',()=>{
+      const op=byId('mt-opponent').value.trim();
+      const dt=byId('mt-date').value;
+      const loc=byId('mt-location').value.trim();
+      const gfor=byId('mt-gfor').value===''?null:ensureInt(byId('mt-gfor').value);
+      const gagn=byId('mt-gagn').value===''?null:ensureInt(byId('mt-gagn').value);
+      const rep=byId('mt-report').value.trim();
+      const present = qsa('#presence-box input[type="checkbox"]:checked').map(cb=>+cb.value);
+      if(!op || !dt) return alert('Tegenstander en datum zijn verplicht');
+      if(editingMatchId){
+        const m = matchById(editingMatchId); if(!m) return;
+        Object.assign(m,{opponent:op,date:dt,location:loc,gfor,gagn,report:rep,present});
+        editingMatchId=null;
+      } else {
+        const id=++db.seq.match; db.matches.push({id,opponent:op,date:dt,location:loc,gfor,gagn,report:rep,present});
+      }
+      save();
+      // reset form
+      byId('edit-match-id').value=''; byId('mt-opponent').value=''; byId('mt-date').value=''; byId('mt-location').value='';
+      byId('mt-gfor').value=''; byId('mt-gagn').value=''; byId('mt-report').value=''; renderPresenceCheckboxes([]);
+      renderAdminMatches(); renderMatches(); renderStats();
+    });
+    byId('btn-cancel-match').addEventListener('click',()=>{
+      editingMatchId=null;
+      byId('edit-match-id').value=''; byId('mt-opponent').value=''; byId('mt-date').value=''; byId('mt-location').value='';
+      byId('mt-gfor').value=''; byId('mt-gagn').value=''; byId('mt-report').value=''; renderPresenceCheckboxes([]);
+    });
+    function renderAdminMatches(){
+      // fill match options for votes tab
+      const sel=byId('vt-match'); sel.innerHTML = db.matches.map(m=>`<option value="${m.id}">${fmtDate(m.date)} vs ${escapeHtml(m.opponent)}</option>`).join('');
+      // list
+      const tb=byId('tbl-matches').querySelector('tbody'); tb.innerHTML='';
+      db.matches.sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(m=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
+          <td class="nowrap">${fmtDate(m.date)}</td>
+          <td>${escapeHtml(m.opponent)}</td>
+          <td>${matchResultText(m)}</td>
+          <td>
+            <button class="btn" data-ed="${m.id}">Bewerken</button>
+            <button class="btn danger" data-del="${m.id}">Verwijderen</button>
+          </td>`;
+        tb.appendChild(tr);
+      });
+      qsa('button[data-ed]',tb).forEach(b=>b.addEventListener('click',()=>{
+        const id=+b.getAttribute('data-ed'); const m=matchById(id); if(!m) return;
+        editingMatchId=id; byId('edit-match-id').value=id;
+        byId('mt-opponent').value=m.opponent; byId('mt-date').value=m.date.slice(0,16);
+        byId('mt-location').value=m.location||'';
+        byId('mt-gfor').value=m.gfor??''; byId('mt-gagn').value=m.gagn??''; byId('mt-report').value=m.report||'';
+        renderPresenceCheckboxes(m.present||[]);
+        // scroll to form
+        byId('ad-matches').scrollIntoView({behavior:'smooth',block:'start'});
+      }));
+      qsa('button[data-del]',tb).forEach(b=>b.addEventListener('click',()=>{
+        const id=+b.getAttribute('data-del');
+        if(!confirm('Wedstrijd verwijderen?')) return;
+        db.matches = db.matches.filter(m=>m.id!==id);
+        // verwijder koppelingen uit stemmingen
+        db.votes.forEach(v=>{ if(v.matchId===id) v.matchId=null; });
+        save(); renderAdminMatches(); renderMatches(); renderStats(); renderVoting();
+      }));
+    }
+
+    // --- VOTES (Admin/Lezer)
+    byId('btn-add-vote').addEventListener('click',()=>{
+      if(!userHasRole('moderator')) return alert('Alleen moderator');
+      const title=byId('vt-title').value.trim(); const matchId=ensureInt(byId('vt-match').value);
+      if(!title || !matchId) return alert('Titel en wedstrijd zijn verplicht');
+      const id=++db.seq.vote;
+      db.votes.push({id,title,matchId,status:'active',createdAt:nowIso(),createdBy:currentUser.id,revealedCount:0});
+      save(); byId('vt-title').value=''; renderAdminVotes(); renderVoting();
+    });
+
+    function renderAdminVotes(){
+      const tb=byId('tbl-votes').querySelector('tbody'); tb.innerHTML='';
+      db.votes.sort((a,b)=>b.id-a.id).forEach(v=>{
+        const tr=document.createElement('tr');
+        const m = matchById(v.matchId);
+        const cnt = db.userVotes.filter(u=>u.voteId===v.id).length;
+        const statusIcon = v.status==='active'?'st-active':(v.status==='closed'?'st-closed':(v.status==='revealing'?'st-revealing':'st-released'));
+        tr.innerHTML=`
+          <td>${escapeHtml(v.title)}</td>
+          <td>${m?escapeHtml(m.opponent):'—'}</td>
+          <td><span class="status-dot ${statusIcon}"></span>${v.status}</td>
+          <td>${cnt}</td>
+          <td class="nowrap">
+            ${userHasRole('moderator') && v.status==='active' ? `<button class="btn warn" data-act="close" data-id="${v.id}">Sluiten</button>`:''}
+            ${(canSeeAdmin() && (v.status==='closed' || v.status==='revealing')) ? `<button class="btn" data-act="open-reveal" data-id="${v.id}">Reveal</button>`:''}
+            ${userHasRole('moderator') && v.status!=='released' ? `<button class="btn primary" data-act="release" data-id="${v.id}">Vrijgeven</button>`:''}
+          </td>
+        `;
+        tb.appendChild(tr);
+      });
+
+      // actions
+      qsa('button[data-act="close"]',tb).forEach(btn=>btn.addEventListener('click',()=>{
+        const id=+btn.getAttribute('data-id'); const v=voteById(id); if(!v) return;
+        if(!confirm('Stemming sluiten? Gebruikers kunnen daarna niet meer stemmen.')) return;
+        v.status='closed'; save(); renderAdminVotes(); renderVoting();
+      }));
+      qsa('button[data-act="open-reveal"]',tb).forEach(btn=>btn.addEventListener('click',()=>{
+        const id=+btn.getAttribute('data-id'); openRevealPanel(id);
+      }));
+      qsa('button[data-act="release"]',tb).forEach(btn=>btn.addEventListener('click',()=>{
+        const id=+btn.getAttribute('data-id'); const v=voteById(id); if(!v) return;
+        if(!userHasRole('moderator')) return alert('Alleen moderator kan vrijgeven');
+        const total = db.userVotes.filter(u=>u.voteId===id).length;
+        if(v.status!=='released' && v.status!=='revealing' && v.status!=='closed' && v.status!=='active'){
+          // never happens
+        }
+        // >>> STEMMING REVEAL FLOW: pas vrijgeven als alles is geopend (revealedCount == total) of er zijn 0 inzendingen
+        if(total>0 && v.revealedCount < total){
+          return alert('Nog niet alle individuele stemmen getoond. Maak eerst de reveal af.');
+        }
+        if(!confirm('Resultaten definitief vrijgeven? Daarna zijn ze altijd zichtbaar.')) return;
+        v.status='released'; save(); renderAdminVotes(); renderVoting(); closeRevealPanel();
+      }));
+    }
+
+    function openRevealPanel(voteId){
+      const v = voteById(voteId); if(!v) return;
+      activeRevealVoteId = voteId;
+      const panel=byId('reveal-panel'); panel.classList.remove('hidden');
+      const info=byId('reveal-info');
+      const list=byId('reveal-list'); list.innerHTML='';
+      const total = db.userVotes.filter(u=>u.voteId===voteId).length;
+      if(v.status==='closed'){ info.textContent='Status: closed. Start de reveal om stemmen één-voor-één te tonen.'; }
+      if(v.status==='revealing'){ info.textContent=`Status: revealing. Getoond: ${v.revealedCount}/${total}`; }
+      if(v.status==='released'){ info.textContent='Status: released. Alles is al vrijgegeven.'; }
+
+      byId('btn-reveal-start').classList.toggle('hidden', v.status!=='closed');
+      byId('btn-reveal-next').classList.toggle('hidden', v.status!=='revealing');
+      byId('btn-release').disabled = !(userHasRole('moderator'));
+
+      // render already revealed items (store them by writing a snapshot with a flag? we will simply show the first revealedCount userVotes in chronological order)
+      const rows = db.userVotes.filter(u=>u.voteId===voteId).sort((a,b)=> new Date(a.createdAt)-new Date(b.createdAt));
+      rows.slice(0, v.revealedCount).forEach((uv,idx)=>{
+        const item=document.createElement('div'); item.className='card';
+        item.innerHTML = renderUserVoteItem(uv, idx+1);
+        list.appendChild(item);
+      });
+    }
+    function closeRevealPanel(){
+      activeRevealVoteId = null; byId('reveal-panel').classList.add('hidden'); byId('reveal-list').innerHTML='';
+    }
+
+    byId('btn-reveal-start').addEventListener('click',()=>{
+      if(activeRevealVoteId==null) return;
+      const v=voteById(activeRevealVoteId); if(!v) return;
+      // >>> STEMMING REVEAL FLOW: zowel moderator als stemmen_lezer mogen starten na 'closed'
+      if(!(userHasRole('moderator') || userHasRole('stemmen_lezer'))) return alert('Geen rechten');
+      if(v.status!=='closed') return alert('Reveal kan alleen vanuit status closed');
+      v.status='revealing'; v.revealedCount=0; save(); openRevealPanel(activeRevealVoteId); renderAdminVotes();
+    });
+    byId('btn-reveal-next').addEventListener('click',()=>{
+      if(activeRevealVoteId==null) return;
+      const v=voteById(activeRevealVoteId); if(!v) return;
+      // >>> STEMMING REVEAL FLOW: moderator of stemmen_lezer kan telkens 1 volgende stem openen
+      if(!(userHasRole('moderator') || userHasRole('stemmen_lezer'))) return alert('Geen rechten');
+      if(v.status!=='revealing') return alert('Niet in reveal-status');
+      const rows = db.userVotes.filter(u=>u.voteId===activeRevealVoteId).sort((a,b)=> new Date(a.createdAt)-new Date(b.createdAt));
+      if(v.revealedCount >= rows.length){ alert('Alle stemmen zijn al getoond. Moderator kan nu vrijgeven.'); return; }
+      const uv = rows[v.revealedCount];
+      v.revealedCount++; save();
+      // append to list
+      const list=byId('reveal-list');
+      const item=document.createElement('div'); item.className='card';
+      item.innerHTML = renderUserVoteItem(uv, v.revealedCount);
+      list.appendChild(item);
+      byId('reveal-info').textContent = `Status: revealing. Getoond: ${v.revealedCount}/${rows.length}`;
+    });
+
+    function renderUserVoteItem(uv, idx){
+      const user = userById(uv.userId);
+      const p = id=> escapeHtml(playerById(id)?.name || '—');
+      return `<div><b>Stem ${idx}</b> • door <i>${escapeHtml(user?.username||'Onbekend')}</i></div>
+        <div>King: ${p(uv.king)} | Kut: ${p(uv.kut)} | Bonanza: ${p(uv.bonanza)}</div>
+        ${uv.comment? `<div class="help">Opmerking: ${escapeHtml(uv.comment)}</div>`:''}`;
+    }
+
+    // ======================================================================
+    //  INIT & RENDER
+    // ======================================================================
+    function renderAll(){ renderKPIs(); renderMatches(); renderStats(); renderVoting(); if(canSeeAdmin()) renderAdmin(); }
+    updateNav(); renderAll();
+
+    // ======================================================================
+    //  UTILS
+    // ======================================================================
+    function escapeHtml(s){ return (s??'').toString().replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[m])); }
+
+</script>
+</body>
+</html>

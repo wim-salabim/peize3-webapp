@@ -426,32 +426,7 @@
     const qs = (sel,root=document)=>root.querySelector(sel);
     const qsa = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
 
-    // default seed
-    const seed = {
-      users:[
-        {id:1,username:'admin',password:'admin123',role:'moderator'},
-        {id:2,username:'lezer',password:'lezer123',role:'stemmen_lezer'},
-        {id:3,username:'speler',password:'speler123',role:'user'}
-      ],
-      players:[
-        {id:1,name:'Martijn Vos',position:'Aanvaller'},
-        {id:2,name:'Tim van Wilsum',position:'Middenveld'},
-        {id:3,name:'Christiaan Arbeider',position:'Verdediging'},
-        {id:4,name:'Rutger Brink',position:'Keeper'}
-      ],
-      matches:[
-        {id:1,opponent:'FC Voorbeeld',date:addDaysISO(3),location:'Thuis',gfor:null,gagn:null,report:'',present:[], goals:[]},
-        {id:2,opponent:'SV Demo',date:addDaysISO(-7),location:'Uit',gfor:2,gagn:2,report:'Leuke pot',present:[1,2,3], goals:[]}
-      ],
-      votes:[
-        // status: active | closed | revealing | released
-        {id:1,title:'Stemming speelronde (SV Demo)',matchId:2,status:'active',createdAt:nowIso(),createdBy:1,revealedCount:0}
-      ],
-      userVotes:[
-        // {voteId,userId,king,kut,bonanza,comment,createdAt}
-      ],
-      seq:{user:3,player:4,match:2,vote:1}
-    };
+
 
     function addDaysISO(d){
       const dt=new Date(); dt.setDate(dt.getDate()+d);
@@ -459,32 +434,139 @@
       return dt.toISOString().slice(0,16);
     }
 
-    function load(){
-      const raw=localStorage.getItem(LS_KEY);
-      if(!raw){ localStorage.setItem(LS_KEY,JSON.stringify(seed)); return structuredClone(seed); }
-      try{ return JSON.parse(raw); }catch(e){ console.error(e); localStorage.setItem(LS_KEY,JSON.stringify(seed)); return structuredClone(seed); }
-    }
-    function save(){ localStorage.setItem(LS_KEY,JSON.stringify(db)); }
-
-    let db = load();
     let currentUser = null;
     let editingPlayerId = null;
     let editingMatchId = null;
     let activeRevealVoteId = null;
 
+    // ASYNC FUNCTION SUPABASE
+    // alle gebruikers laden
+    async function loadUsers(){
+      const { data, error } = await supabase.from('users').select('*').order('username');
+      if(error){ console.error("loadUsers error", error); return []; }
+      usersCache=data;
+      return data;
+    }
+    // gebruiker opslaan
+    async function saveUser(user){
+      const { data, error } = await supabase.from('users').insert(user).select();
+      if(error) console.error("saveUser error", error);
+      return data;
+    }
+    // gebruiker updaten
+    async function updateUser(id, fields){
+      const { data, error } = await supabase.from('users').update(fields).eq('id',id).select();
+      if(error) console.error("updateUser error", error);
+      return data;
+    }
+    // gebruiker verwijderen
+    async function deleteUser(id){
+      const { error } = await supabase.from('users').delete().eq('id',id);
+      if(error) console.error("deleteUser error", error);
+    }
+    async function loadPlayers(){
+      const { data, error } = await supabase.from('players').select('*').order('name');
+      if(error){ console.error("loadPlayers error", error); return []; }
+      playersCache = data;
+      return data;
+    }
+
+    async function savePlayer(player){
+      const { data, error } = await supabase.from('players').insert(player).select();
+      if(error) console.error("savePlayer error", error);
+      return data;
+    }
+
+    async function updatePlayer(id, fields){
+      const { data, error } = await supabase.from('players').update(fields).eq('id',id).select();
+      if(error) console.error("updatePlayer error", error);
+      return data;
+    }
+
+    async function deletePlayer(id){
+      const { error } = await supabase.from('players').delete().eq('id',id);
+      if(error) console.error("deletePlayer error", error);
+    }
+    async function loadMatches(){
+      const { data, error } = await supabase.from('matches').select('*').order('date');
+      if(error){ console.error("loadMatches error", error); return []; }
+      matchesCache = data;
+      return data;
+    }
+
+    async function saveMatch(match){
+      const { data, error } = await supabase.from('matches').insert(match).select();
+      if(error) console.error("saveMatch error", error);
+      return data;
+    }
+
+    async function updateMatch(id, fields){
+      const { data, error } = await supabase.from('matches').update(fields).eq('id',id).select();
+      if(error) console.error("updateMatch error", error);
+      return data;
+    }
+
+    async function deleteMatch(id){
+      const { error } = await supabase.from('matches').delete().eq('id',id);
+      if(error) console.error("deleteMatch error", error);
+    }
+    async function loadVotes(){
+      const { data, error } = await supabase.from('votes').select('*').order('created_at');
+      if(error){ console.error("loadVotes error", error); return []; }
+      votesCaches=data;
+      return data;
+    }
+    async function saveVote(vote){
+      const { data, error } = await supabase.from('votes').insert(vote).select();
+      if(error) console.error("saveVote error", error);
+      return data;
+    }
+    async function updateVote(id, fields){
+      const { data, error } = await supabase.from('votes').update(fields).eq('id',id).select();
+      if(error) console.error("updateVote error", error);
+      return data;
+    }
+    async function deleteVote(id){
+      const { error } = await supabase.from('votes').delete().eq('id',id);
+      if(error) console.error("deleteVote error", error);
+    }
+    async function loadUserVotes(voteId){
+      const { data, error } = await supabase.from('user_votes').select('*').eq('vote_id', voteId);
+      if(error){ console.error("loadUserVotes error", error); return []; }
+      return data;
+    }
+
+    async function saveUserVote(vote){
+      const { data, error } = await supabase.from('user_votes').insert(vote).select();
+      if(error) console.error("saveUserVote error", error);
+      return data;
+    }
+
+    async function deleteUserVote(id){
+      const { error } = await supabase.from('user_votes').delete().eq('id',id);
+      if(error) console.error("deleteUserVote error", error);
+    }
+
+
+
+
     // ======================================================================
     //  HELPers
     // ======================================================================
+    let playersCache = [];
+    let matchesCache = [];
+    let votesCache = [];
+    let usersCache = [];
     function fmtDate(d){ if(!d) return ''; const t=new Date(d); return t.toLocaleString(); }
     function sum(arr){ return arr.reduce((a,b)=>a+b,0); }
     function ensureInt(v){ const n=parseInt(v,10); return isNaN(n)?null:n; }
     function matchResultText(m){ if(m.gfor==null || m.gagn==null) return '—'; return m.gfor+' - '+m.gagn; }
     function isUpcoming(m){ return (new Date(m.date) > new Date()) && (m.gfor==null || m.gagn==null); }
     function isPlayed(m){ return Array.isArray(m.present) && m.present.length>0; } // >>> STATISTIEKEN OPSCHOON
-    function playerById(id){ return db.players.find(p=>p.id===id); }
-    function matchById(id){ return db.matches.find(m=>m.id===id); }
-    function voteById(id){ return db.votes.find(v=>v.id===id); }
-    function userById(id){ return db.users.find(u=>u.id===id); }
+    function playerById(id){ return playersCache.find(p=>p.id===id); }
+    function matchById(id){ return matchesCache.find(m=>m.id===id); }
+    function voteById(id){ return votesCache.find(v=>v.id===id); }
+    function userById(id){ return usersCache.find(u=>u.id===id); }
     function userHasRole(role){ return currentUser && currentUser.role===role; }
     function canSeeAdmin(){ return currentUser && (currentUser.role==='moderator' || currentUser.role==='stemmen_lezer'); } // stemmen_lezer mag reveal-paneel zien
     function uniq(arr){ return Array.from(new Set(arr)); }

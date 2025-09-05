@@ -66,6 +66,71 @@
         .help{font-size:.85rem;color:#9ca3af}
         .nowrap{white-space:nowrap}
         .tight td{padding:6px 4px}
+        #tbl-stats th { cursor:pointer; }
+        #tbl-stats th.asc::after { content:" ▲"; }
+        #tbl-stats th.desc::after { content:" ▼"; }
+        #tbl-klassement th { cursor:pointer; }
+        #tbl-klassement th.asc::after { content:" ▲"; }
+        #tbl-klassement th.desc::after { content:" ▼"; }
+        #kpi-scorers, #kpi-assists, #kpi-kut, #kpi-king, #kpi-bonanza { margin:4px 0; padding-left:18px; }
+        #kpi-scorers li, #kpi-assists li, #kpi-kut li, #kpi-king li, #kpi-bonanza li { margin:2px 0; }
+        #presence-box label {
+          display: inline-flex;      /* compacte inline flex, niet full-width */
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;       /* tekst mag niet afbreken */
+        }
+
+        #presence-box {
+          display: flex;             /* lijst van spelers onder elkaar */
+          flex-direction: column;
+          gap: 6px;                  /* beetje ruimte ertussen */
+        }
+
+        #presence-box input[type="checkbox"] {
+          margin: 0;       /* haalt de standaard-inspringing weg */
+        }3
+        .table-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* Zorg dat de tabel z'n normale layout behoudt */
+        .table-wrapper table {
+            min-width: 600px; /* of meer, afhankelijk van aantal kolommen */
+            border-collapse: collapse;
+        }
+
+        /* 📱 Responsive fixes */
+        @media (max-width: 768px) {
+          /* Zet rijen onder elkaar op mobiel */
+          .row {
+            flex-direction: column;
+          }
+
+          /* Buttons in nav compacter en in meerdere regels */
+          header nav {
+            flex-wrap: wrap;
+            gap: 6px;
+          }
+
+          header .btn {
+            flex: initial;      /* geen forceren */
+            min-width: unset;   /* vaste breedte weg */
+          }
+
+          /* Optioneel: horizontaal scrollbare nav */
+          header nav {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          /* Grid-items vol-breed op heel smal scherm */
+          .grid {
+            grid-template-columns: 1fr;
+          }
+        }
     </style>
 </head>
 <body>
@@ -75,6 +140,7 @@
         <button class="btn" data-go="home">Home</button>
         <button class="btn" data-go="matches">Wedstrijden</button>
         <button class="btn" data-go="stats">Statistieken</button>
+        <button class="btn" data-go="klassement">Klassement</button>
         <button class="btn" data-go="voting">Stemmen</button>
         <span id="nav-admin" class="hidden">
         <button class="btn" data-go="admin">Beheer</button>
@@ -98,20 +164,32 @@
                 <div class="divider"></div>
                 <div class="grid">
                     <div class="card">
-                        <div class="subtle">Gespeelde wedstrijden</div>
-                        <div class="kpi"><span id="kpi-played">0</span></div>
+                        <div class="kpi">Gespeelde wedstrijden</div>
+                        <div class="subtle">Winst: <span id="home-wins">0</span></div>
+                        <div class="subtle">Gelijk: <span id="home-draws">0</span></div>
+                        <div class="subtle">Verlies: <span id="home-losses">0</span></div>
+                        <br>
+                        <div class="kpi">Aantal punten: <span id="home-points">0</span></div>
                     </div>
                     <div class="card">
-                        <div class="subtle">Aankomende wedstrijden (programma)</div>
-                        <div class="kpi"><span id="kpi-upcoming">0</span></div>
+                        <div class="kpi">Top 3 - Topscorer</div>
+                        <div class="subtle"><ol id="kpi-scorers">0</ol></div>
                     </div>
                     <div class="card">
-                        <div class="subtle">Aantal spelers</div>
-                        <div class="kpi"><span id="kpi-players">0</span></div>
+                        <div class="kpi">Top 3 - Assists</div>
+                        <div class="subtle"><ol id="kpi-assists">0</ol></div>
                     </div>
                     <div class="card">
-                        <div class="subtle">Actieve stemmingen</div>
-                        <div class="kpi"><span id="kpi-votes">0</span></div>
+                        <div class="kpi">Top 3 - King</div>
+                        <div class="subtle"><span id="kpi-king">0</span></div>
+                    </div>
+                    <div class="card">
+                        <div class="kpi">Top 3 - Kut</div>
+                        <div class="subtle"><span id="kpi-kut">0</span></div>
+                    </div>
+                    <div class="card">
+                        <div class="kpi">Top 3 - Bonanza</div>
+                        <div class="subtle"><span id="kpi-bonanza">0</span></div>
                     </div>
                 </div>
             </div>
@@ -135,12 +213,26 @@
     <section id="stats" class="section">
         <div class="card">
             <h1>Statistieken</h1>
-            <div class="help">⚠️ Gele/Rode kaarten zijn verwijderd. We houden <b>gespeelde wedstrijden</b> per speler bij op basis van het wedstrijdformulier (aanwezigheid).</div>
+            <div class="table-wrapper">
+                <table id="tbl-stats" class="tight">
+                    <thead><tr><th>Speler</th><th>Positie</th><th>Gespeelde wedstrijden</th><th>Doelpunten</th><th>Assists</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- KKB-KLASSEMENT -->
+    <section id="klassement" class="section">
+        <div class="card">
+            <h1>King-Kut-Bonanza Klassement</h1>
             <div class="divider"></div>
-            <table id="tbl-stats" class="tight">
-                <thead><tr><th>Speler</th><th>Positie</th><th class="nowrap">Gespeelde wedstrijden</th></tr></thead>
-                <tbody></tbody>
-            </table>
+            <div class="table-wrapper">
+                <table id="tbl-klassement" class="tight">
+                    <thead><tr><th>Speler</th><th>King-Stemmen</th><th>Kut-Stemmen</th><th>Bonanza-Stemmen</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         </div>
     </section>
 
@@ -202,10 +294,12 @@
                     </div>
                     <div class="col card">
                         <h2>Bestaande gebruikers</h2>
-                        <table id="tbl-users">
-                            <thead><tr><th>Naam</th><th>Rol</th><th>Wijzig</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
+                        <div class="table-wrapper">
+                            <table id="tbl-users">
+                                <thead><tr><th>Naam</th><th>Rol</th><th>Wijzig</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -225,10 +319,12 @@
                     </div>
                     <div class="col card">
                         <h2>Spelers</h2>
-                        <table id="tbl-players" class="tight">
-                            <thead><tr><th>Naam</th><th>Positie</th><th>Acties</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
+                        <div class="table-wrapper">
+                            <table id="tbl-players" class="tight">
+                                <thead><tr><th>Naam</th><th>Positie</th><th>Acties</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -244,6 +340,10 @@
                         <label>Locatie</label><input id="mt-location" placeholder="optioneel"/>
                         <label>Uitslag (onze goals)</label><input id="mt-gfor" type="number" min="0" placeholder="leeg laten als nog niet gespeeld"/>
                         <label>Uitslag (tegenstander goals)</label><input id="mt-gagn" type="number" min="0" placeholder=""/>
+                        <div class="divider"></div>
+                        <h3>Doelpunten</h3>
+                        <div id="goals-box" class="list"></div>
+                        <button type="button" class="btn" id="btn-add-goal">➕ Doelpunt toevoegen</button>
                         <label>Verslag</label><textarea id="mt-report" rows="3" placeholder="wedstrijdverslag (optioneel)"></textarea>
                         <div class="divider"></div>
                         <h3>Aanwezige spelers</h3>
@@ -255,10 +355,12 @@
                     </div>
                     <div class="col card">
                         <h2>Wedstrijden</h2>
-                        <table id="tbl-matches">
-                            <thead><tr><th>Datum</th><th>Tegenstander</th><th>Uitslag</th><th>Acties</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
+                        <div class="table-wrapper">
+                            <table id="tbl-matches">
+                                <thead><tr><th>Datum</th><th>Tegenstander</th><th>Uitslag</th><th>Acties</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -278,18 +380,20 @@
                     </div>
                     <div class="col card">
                         <h2>Stemmingen</h2>
-                        <table id="tbl-votes" class="tight">
-                            <thead>
-                            <tr>
-                                <th>Titel</th>
-                                <th>Wedstrijd</th>
-                                <th>Status</th>
-                                <th>Inzendingen</th>
-                                <th>Acties</th>
-                            </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
+                        <div class="table-wrapper">
+                            <table id="tbl-votes" class="tight">
+                                <thead>
+                                <tr>
+                                    <th>Titel</th>
+                                    <th>Wedstrijd</th>
+                                    <th>Status</th>
+                                    <th>Inzendingen</th>
+                                    <th>Acties</th>
+                                </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
                         <div id="reveal-panel" class="reveal-box hidden">
                             <h3>Individuele stemmen tonen</h3>
                             <div id="reveal-info" class="muted"></div>
@@ -326,14 +430,14 @@
         {id:3,username:'speler',password:'speler123',role:'user'}
       ],
       players:[
-        {id:1,name:'Jan Jansen',position:'Aanvaller'},
-        {id:2,name:'Piet Peters',position:'Middenveld'},
-        {id:3,name:'Klaas Klaassen',position:'Verdediging'},
-        {id:4,name:'Henk Hendriks',position:'Keeper'}
+        {id:1,name:'Martijn Vos',position:'Aanvaller'},
+        {id:2,name:'Tim van Wilsum',position:'Middenveld'},
+        {id:3,name:'Christiaan Arbeider',position:'Verdediging'},
+        {id:4,name:'Rutger Brink',position:'Keeper'}
       ],
       matches:[
-        {id:1,opponent:'FC Voorbeeld',date:addDaysISO(3),location:'Thuis',gfor:null,gagn:null,report:'',present:[]},
-        {id:2,opponent:'SV Demo',date:addDaysISO(-7),location:'Uit',gfor:2,gagn:2,report:'Leuke pot',present:[1,2,3]}
+        {id:1,opponent:'FC Voorbeeld',date:addDaysISO(3),location:'Thuis',gfor:null,gagn:null,report:'',present:[], goals:[]},
+        {id:2,opponent:'SV Demo',date:addDaysISO(-7),location:'Uit',gfor:2,gagn:2,report:'Leuke pot',present:[1,2,3], goals:[]}
       ],
       votes:[
         // status: active | closed | revealing | released
@@ -401,6 +505,7 @@
       if(sec==='stats') renderStats();
       if(sec==='voting') renderVoting();
       if(sec==='admin') renderAdmin();
+      if(sec==='klassement') renderKlassement();
     }));
     byId('btn-logout').addEventListener('click',()=>{ currentUser=null; updateNav(); show('home'); });
 
@@ -417,10 +522,80 @@
     //  HOME KPIs
     // ======================================================================
     function renderKPIs(){
-      byId('kpi-players').textContent = db.players.length;
-      byId('kpi-played').textContent = db.matches.filter(isPlayed).length;
-      byId('kpi-upcoming').textContent = db.matches.filter(isUpcoming).length;
-      byId('kpi-votes').textContent = db.votes.filter(v=>v.status==='active').length;
+      // Winst, gelijk, verlies tellen
+       let wins=0, draws=0, losses=0;
+       db.matches.forEach(m=>{
+        if(m.gfor!=null && m.gagn!=null){ // alleen gespeelde wedstrijden
+          if(m.gfor > m.gagn) wins++;
+          else if(m.gfor === m.gagn) draws++;
+          else losses++;
+        }
+      });
+
+      const points = wins*3 + draws;
+
+      byId('home-wins').textContent = wins;
+      byId('home-draws').textContent = draws;
+      byId('home-losses').textContent = losses;
+      byId('home-points').textContent = points;
+
+      // Doelpunten & assists tellen
+      const goals={}, assists={};
+      db.players.forEach(p=>{ goals[p.id]=0; assists[p.id]=0; });
+      db.matches.forEach(m=>{
+        (m.goals||[]).forEach(g=>{
+          if(g.scorer) goals[g.scorer]++;
+          if(g.assist) assists[g.assist]++;
+        });
+      });
+
+      // Top 3 doelpuntenmakers
+      const topScorers = Object.entries(goals)
+        .sort((a,b)=>b[1]-a[1]).slice(0,3);
+      byId('kpi-scorers').innerHTML = topScorers.map(([pid,c])=>{
+        const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
+        return `<li>${name}: ${c}</li>`;
+      }).join('');
+
+      // Top 3 assistgevers
+      const topAssists = Object.entries(assists)
+        .sort((a,b)=>b[1]-a[1]).slice(0,3);
+      byId('kpi-assists').innerHTML = topAssists.map(([pid,c])=>{
+        const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
+        return `<li>${name}: ${c}</li>`;
+      }).join('');
+        // King, Kut en Bonanza stemmen tellen
+        const king={}, kut={}, bonanza={};
+        db.players.forEach(p=>{ king[p.id]=0; kut[p.id]=0; bonanza[p.id]=0; });
+        db.userVotes.forEach(uv=>{
+          if(uv.king) king[uv.king]++;
+          if(uv.kut) kut[uv.kut]++;
+          if(uv.bonanza) bonanza[uv.bonanza]++;
+        });
+
+        // Top 3 King
+        const topKing = Object.entries(king)
+          .sort((a,b)=>b[1]-a[1]).slice(0,3);
+        byId('kpi-king').innerHTML = topKing.map(([pid,c])=>{
+          const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
+          return `<li>${name}: ${c}</li>`;
+        }).join('');
+
+        // Top 3 Kut
+        const topKut = Object.entries(kut)
+          .sort((a,b)=>b[1]-a[1]).slice(0,3);
+        byId('kpi-kut').innerHTML = topKut.map(([pid,c])=>{
+          const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
+          return `<li>${name}: ${c}</li>`;
+        }).join('');
+
+        // Top 3 Bonanza
+        const topBonanza = Object.entries(bonanza)
+          .sort((a,b)=>b[1]-a[1]).slice(0,3);
+        byId('kpi-bonanza').innerHTML = topBonanza.map(([pid,c])=>{
+          const name = escapeHtml(playerById(+pid)?.name||'Onbekend');
+          return `<li>${name}: ${c}</li>`;
+        }).join('');
     }
 
     // ======================================================================
@@ -454,6 +629,20 @@
       results.forEach(m=>{
         const div=document.createElement('div'); div.className='card';
         const presentNames = (m.present||[]).map(pid=>playerById(pid)?.name).filter(Boolean).join(', ') || '—';
+
+        // >>> NIEUW: doelpunten renderen
+        let goalsHtml = '';
+        if(m.goals && m.goals.length > 0){
+          goalsHtml = '<ul class="help">';
+          m.goals.forEach((g,idx)=>{
+            const scorer = playerById(g.scorer)?.name || '—';
+            const assist = g.type==='veld' && g.assist ? (' (assist: '+(playerById(g.assist)?.name||'—')+')') : '';
+            const type = g.type==='penalty' ? 'Penalty' : 'Veldgoal';
+            goalsHtml += `<li>${type}: ${escapeHtml(scorer)}${assist}</li>`;
+          });
+          goalsHtml += '</ul>';
+        }
+
         div.innerHTML = `
           <div class="row">
             <div class="col">
@@ -461,6 +650,7 @@
               <div class="subtle">${m.location||''}</div>
               <div class="pill">Uitslag: <b>${matchResultText(m)}</b></div>
               <div class="help">Aanwezigen: ${presentNames}</div>
+              ${goalsHtml} <!-- >>> hier tonen -->
             </div>
             <div class="col" style="max-width:220px">
               <div>${m.report?escapeHtml(m.report):''}</div>
@@ -468,22 +658,105 @@
           </div>`;
         ul.appendChild(div);
       });
+
     }
 
     // ======================================================================
     //  STATS (gespeelde wedstrijden per speler)  -- kaarten verwijderd
     // ======================================================================
-    function renderStats(){
-      const tb=byId('tbl-stats').querySelector('tbody');
-      tb.innerHTML='';
-      const counts = Object.fromEntries(db.players.map(p=>[p.id,0]));
-      db.matches.forEach(m=> (m.present||[]).forEach(pid=>counts[pid]=(counts[pid]||0)+1) );
+    function renderKlassement(){
+      const tb = byId('tbl-klassement').querySelector('tbody');
+      tb.innerHTML = '';
+
+      // tellers
+      const king = {}, kut = {}, bonanza = {};
       db.players.forEach(p=>{
+        king[p.id]=0; kut[p.id]=0; bonanza[p.id]=0;
+      });
+
+      // doorloop alle userVotes
+      db.userVotes.forEach(uv=>{
+        if(uv.king) king[uv.king]++;
+        if(uv.kut) kut[uv.kut]++;
+        if(uv.bonanza) bonanza[uv.bonanza]++;
+      });
+
+      // render tabel
+      db.players.forEach(p=>{
+        const k=king[p.id]||0, ku=kut[p.id]||0, b=bonanza[p.id]||0;
         const tr=document.createElement('tr');
-        tr.innerHTML=`<td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.position||'')}</td><td>${counts[p.id]||0}</td>`;
+        tr.innerHTML=`
+          <td>${escapeHtml(p.name)}</td>
+          <td>${k}</td>
+          <td>${ku}</td>
+          <td>${b}</td>
+        `;
         tb.appendChild(tr);
       });
+
+      makeTableSortable('tbl-klassement');
     }
+
+    function renderStats(){
+      const tb = byId('tbl-stats').querySelector('tbody');
+      tb.innerHTML = '';
+
+      // Gespeelde wedstrijden tellen
+      const counts = Object.fromEntries(db.players.map(p=>[p.id,0]));
+      db.matches.forEach(m=> (m.present||[]).forEach(pid=>counts[pid]=(counts[pid]||0)+1) );
+
+      // Doelpunten & Assists tellen
+      const goalsFor = {}, assistsFor = {};
+      db.players.forEach(p=>{ goalsFor[p.id]=0; assistsFor[p.id]=0; });
+      db.matches.forEach(m=>{
+        (m.goals||[]).forEach(g=>{
+          if(g.scorer) goalsFor[g.scorer]++;
+          if(g.assist) assistsFor[g.assist]++;
+        });
+      });
+
+      // Spelersrijen renderen
+      db.players.forEach(p=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(p.name)}</td>
+          <td>${escapeHtml(p.position||'')}</td>
+          <td>${counts[p.id]||0}</td>
+          <td>${goalsFor[p.id]||0}</td>
+          <td>${assistsFor[p.id]||0}</td>
+        `;
+        tb.appendChild(tr);
+      });
+
+      // Sorteerfunctie activeren
+      makeTableSortable('tbl-stats');
+    }
+    function makeTableSortable(tableId){
+      const table = byId(tableId);
+      const headers = table.querySelectorAll('th');
+      headers.forEach((th, idx)=>{
+        th.addEventListener('click', ()=>{
+          const tbody = table.querySelector('tbody');
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const asc = !th.classList.contains('asc');
+          // reset andere kolommen
+          table.querySelectorAll('th').forEach(h=>h.classList.remove('asc','desc'));
+          th.classList.add(asc?'asc':'desc');
+
+          rows.sort((a,b)=>{
+            let A = a.children[idx].textContent.trim();
+            let B = b.children[idx].textContent.trim();
+            const nA = parseFloat(A), nB = parseFloat(B);
+            if(!isNaN(nA) && !isNaN(nB)){
+              return asc ? nA-nB : nB-nA;
+            }
+            return asc ? A.localeCompare(B) : B.localeCompare(A);
+          });
+          rows.forEach(r=>tbody.appendChild(r));
+        });
+      });
+    }
+
 
     // ======================================================================
     //  VOTING (user)
@@ -545,10 +818,12 @@
       const box=document.createElement('div'); box.className='vote-box';
       const opts = db.players.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
       box.innerHTML = `
-        <div class="vote-row"><label style="min-width:160px">King of the Match</label><select class="vote-king"><option value="">—</option>${opts}</select></div>
-        <div class="vote-row"><label style="min-width:160px">Kut van de Week</label><select class="vote-kut"><option value="">—</option>${opts}</select></div>
+        <div class="vote-row"><label style="min-width:160px">King</label><select class="vote-king"><option value="">—</option>${opts}</select></div>
+        <label>Opmerking bij King</label><textarea class="vote-comment-king" rows="2" placeholder="optioneel"></textarea>
+        <div class="vote-row"><label style="min-width:160px">Kut</label><select class="vote-kut"><option value="">—</option>${opts}</select></div>
+        <label>Opmerking bij Kut</label><textarea class="vote-comment-kut" rows="2" placeholder="optioneel"></textarea>
         <div class="vote-row"><label style="min-width:160px">Bonanza</label><select class="vote-bonanza"><option value="">—</option>${opts}</select></div>
-        <label>Opmerking</label><textarea class="vote-comment" rows="2" placeholder="optioneel"></textarea>
+        <label>Opmerking bij Bonanza</label><textarea class="vote-comment-bonanza" rows="2" placeholder="optioneel"></textarea>
         <div class="sticky-actions"><button class="btn primary">Versturen</button></div>
       `;
       box.querySelector('button').addEventListener('click',()=>{
@@ -556,8 +831,10 @@
         const king=ensureInt(box.querySelector('.vote-king').value);
         const kut=ensureInt(box.querySelector('.vote-kut').value);
         const bon=ensureInt(box.querySelector('.vote-bonanza').value);
-        const comment=box.querySelector('.vote-comment').value.trim();
-        db.userVotes.push({voteId:v.id,userId:currentUser.id,king,kut,bonanza:bon,comment,createdAt:nowIso()});
+        const cKing = box.querySelector('.vote-comment-king').value.trim();
+        const cKut  = box.querySelector('.vote-comment-kut').value.trim();
+        const cBon  = box.querySelector('.vote-comment-bonanza').value.trim();
+        db.userVotes.push({voteId:v.id,userId:currentUser.id, king, kut, bonanza:bon,cKing, cKut, cBon,  createdAt:nowIso()})
         save(); renderVoting(); renderAdminVotes();
       });
       return box;
@@ -577,10 +854,22 @@
       const mk = (obj,title)=>{
         const arr = Object.entries(obj).sort((a,b)=>b[1]-a[1]);
         if(arr.length===0) return `<div><b>${title}:</b> —</div>`;
-        return `<div><b>${title}:</b> `+arr.map(([pid,c])=>`${escapeHtml(playerById(+pid)?.name||'Onbekend')} <span class="pill">${c}</span>`).join(', ') + `</div>`
+
+        const max = arr[0][1]; // hoogste aantal stemmen
+
+        return `<div><b>${title}:</b> ` + arr.map(([pid,c])=>{
+          const name = escapeHtml(playerById(+pid)?.name || 'Onbekend');
+          const isWinner = c === max;
+          const highlight = isWinner ? ' style="font-weight:bold;color:#22c55e"' : '';
+          return `<span${highlight}>${name} <span class="pill">${c}</span></span>`;
+        }).join(', ') + `</div>`;
       };
-      return mk(agg.king,'King of the Match') + mk(agg.kut,'Kut van de Week') + mk(agg.bonanza,'Bonanza');
+
+      return mk(agg.king,'King')
+           + mk(agg.kut,'Kut')
+           + mk(agg.bonanza,'Bonanza');
     }
+
 
     // ======================================================================
     //  ADMIN
@@ -673,7 +962,7 @@
       } else {
         const id=++db.seq.player; db.players.push({id,name,position:pos});
       }
-      save(); byId('pl-name').value=''; byId('pl-pos').value=''; renderAdminPlayers(); renderMatches(); renderStats(); renderVoting();
+      save(); byId('pl-name').value=''; byId('pl-pos').value=''; renderAdminPlayers(); renderMatches(); renderStats(); renderVoting(); renderKlassement();
     });
     byId('btn-cancel-player').addEventListener('click',()=>{ editingPlayerId=null; byId('pl-name').value=''; byId('pl-pos').value=''; });
     function renderAdminPlayers(){
@@ -699,24 +988,61 @@
         db.players = db.players.filter(p=>p.id!==id);
         // verwijder ook uit aanwezigheden
         db.matches.forEach(m=> m.present = (m.present||[]).filter(pid=>pid!==id) );
-        save(); renderAdminPlayers(); renderMatches(); renderStats(); renderVoting();
+        save(); renderAdminPlayers(); renderMatches(); renderStats(); renderVoting(); renderKlassement();
       }));
     }
 
     // --- MATCHES
-    function renderPresenceCheckboxes(selected=[]){
-      const box=byId('presence-box'); box.innerHTML='';
-      db.players.forEach(p=>{
-        const div=document.createElement('div'); div.className='player card';
-        div.innerHTML=`
-          <label style="display:flex;gap:8px;align-items:center">
-            <input type="checkbox" value="${p.id}" ${selected.includes(p.id)?'checked':''}/>
+    let currentGoals = [];
+
+    function renderGoalsForm(goals=[]){
+      const box = byId('goals-box');
+      box.innerHTML = '';
+      goals.forEach((g, idx) => {
+        const opts = db.players.map(p=>`<option value="${p.id}" ${p.id===g.scorer?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
+        const optsAssist = db.players.map(p=>`<option value="${p.id}" ${p.id===g.assist?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
+        box.innerHTML += `
+          <div class="card">
+            <label>Type</label>
+            <select class="goal-type" data-idx="${idx}">
+              <option value="veld" ${g.type==='veld'?'selected':''}>Veldgoal</option>
+              <option value="penalty" ${g.type==='penalty'?'selected':''}>Penalty</option>
+            </select>
+            <label>Doelpuntenmaker</label>
+            <select class="goal-scorer" data-idx="${idx}">${opts}</select>
+            <div class="assist-box" ${g.type==='penalty'?'style="display:none"':''}>
+              <label>Assist</label>
+              <select class="goal-assist" data-idx="${idx}">
+                <option value="">—</option>${optsAssist}
+              </select>
+            </div>
+            <button class="btn danger" onclick="removeGoal(${idx})">❌ Verwijderen</button>
+          </div>
+        `;
+      });
+    }
+    function renderPresenceCheckboxes(selected = []) {
+      const box = byId('presence-box');
+      box.innerHTML = '';
+      db.players.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'player';
+        div.innerHTML = `
+          <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" value="${p.id}" ${selected.includes(p.id) ? 'checked' : ''}/>
             <span>${escapeHtml(p.name)}</span>
-            <span class="subtle" style="margin-left:auto">${escapeHtml(p.position||'')}</span>
           </label>`;
         box.appendChild(div);
       });
     }
+    function removeGoal(idx){
+      currentGoals.splice(idx,1);
+      renderGoalsForm(currentGoals);
+    }
+    byId('btn-add-goal').addEventListener('click',()=>{
+      currentGoals.push({type:'veld', scorer:null, assist:null});
+      renderGoalsForm(currentGoals);
+    });
     byId('btn-save-match').addEventListener('click',()=>{
       const op=byId('mt-opponent').value.trim();
       const dt=byId('mt-date').value;
@@ -725,13 +1051,14 @@
       const gagn=byId('mt-gagn').value===''?null:ensureInt(byId('mt-gagn').value);
       const rep=byId('mt-report').value.trim();
       const present = qsa('#presence-box input[type="checkbox"]:checked').map(cb=>+cb.value);
+      const goals = collectGoalsForm();
       if(!op || !dt) return alert('Tegenstander en datum zijn verplicht');
       if(editingMatchId){
         const m = matchById(editingMatchId); if(!m) return;
-        Object.assign(m,{opponent:op,date:dt,location:loc,gfor,gagn,report:rep,present});
+        Object.assign(m,{opponent:op,date:dt,location:loc,gfor,gagn,report:rep,present,goals});
         editingMatchId=null;
       } else {
-        const id=++db.seq.match; db.matches.push({id,opponent:op,date:dt,location:loc,gfor,gagn,report:rep,present});
+        const id=++db.seq.match; db.matches.push({id,opponent:op,date:dt,location:loc,gfor,gagn,report:rep,present,goals});
       }
       save();
       // reset form
@@ -744,6 +1071,15 @@
       byId('edit-match-id').value=''; byId('mt-opponent').value=''; byId('mt-date').value=''; byId('mt-location').value='';
       byId('mt-gfor').value=''; byId('mt-gagn').value=''; byId('mt-report').value=''; renderPresenceCheckboxes([]);
     });
+    function collectGoalsForm(){
+      return qsa('#goals-box .card').map((div, idx)=>{
+        const type = div.querySelector('.goal-type').value;
+        const scorer = ensureInt(div.querySelector('.goal-scorer').value);
+        const assistEl = div.querySelector('.goal-assist');
+        const assist = assistEl ? ensureInt(assistEl.value) : null;
+        return {type, scorer, assist};
+      });
+    }
     function renderAdminMatches(){
       // fill match options for votes tab
       const sel=byId('vt-match'); sel.innerHTML = db.matches.map(m=>`<option value="${m.id}">${fmtDate(m.date)} vs ${escapeHtml(m.opponent)}</option>`).join('');
@@ -768,6 +1104,8 @@
         byId('mt-location').value=m.location||'';
         byId('mt-gfor').value=m.gfor??''; byId('mt-gagn').value=m.gagn??''; byId('mt-report').value=m.report||'';
         renderPresenceCheckboxes(m.present||[]);
+        currentGoals = m.goals || [];
+        renderGoalsForm(currentGoals);
         // scroll to form
         byId('ad-matches').scrollIntoView({behavior:'smooth',block:'start'});
       }));
@@ -780,6 +1118,7 @@
         save(); renderAdminMatches(); renderMatches(); renderStats(); renderVoting();
       }));
     }
+
 
     // --- VOTES (Admin/Lezer)
     byId('btn-add-vote').addEventListener('click',()=>{
@@ -893,15 +1232,19 @@
     function renderUserVoteItem(uv, idx){
       const user = userById(uv.userId);
       const p = id=> escapeHtml(playerById(id)?.name || '—');
-      return `<div><b>Stem ${idx}</b> • door <i>${escapeHtml(user?.username||'Onbekend')}</i></div>
-        <div>King: ${p(uv.king)} | Kut: ${p(uv.kut)} | Bonanza: ${p(uv.bonanza)}</div>
-        ${uv.comment? `<div class="help">Opmerking: ${escapeHtml(uv.comment)}</div>`:''}`;
+      return `<div><b>Stem ${idx}</b></div>
+        <div>King: ${p(uv.king)}</div
+        ${uv.cKing? `<div class="help">Opmerking King: ${escapeHtml(uv.cKing)}</div>`:''}
+        <div>Kut: ${p(uv.kut)}</div>
+        ${uv.cKut? `<div class="help">Opmerking Kut: ${escapeHtml(uv.cKut)}</div>`:''}
+        <div>Bonanza: ${p(uv.bonanza)}</div>
+        ${uv.cBon? `<div class="help">Opmerking Bonanza: ${escapeHtml(uv.cBon)}</div>`:''}`;
     }
 
     // ======================================================================
     //  INIT & RENDER
     // ======================================================================
-    function renderAll(){ renderKPIs(); renderMatches(); renderStats(); renderVoting(); if(canSeeAdmin()) renderAdmin(); }
+    function renderAll(){ renderKPIs(); renderMatches(); renderStats(); renderKlassement(); renderVoting(); if(canSeeAdmin()) renderAdmin(); }
     updateNav(); renderAll();
 
     // ======================================================================
